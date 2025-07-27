@@ -1,7 +1,8 @@
 from typing import List, Union, Generator, Optional, Callable, Dict
-from model.transition import ProbabilityBuilder
 from model.utils import cal_body_weight
+from model.utils import probability_at_least_one_event
 from pathlib import Path
+from SALib.sample import saltelli
 import numpy as np
 import pandas as pd
 
@@ -17,7 +18,7 @@ class MarkovChain:
     def __init__(
         self,
         states: List[str],
-        transitions: Union[List[List[float]], np.ndarray],
+        transitions: Union[List[List[np.float64]], np.ndarray],
         start_state: str,
         steps: int,
     ) -> None:
@@ -30,7 +31,7 @@ class MarkovChain:
             start_state: Initial state
             steps: Number of steps to simulate
         """
-        self.transitions = np.array(transitions, dtype=float)
+        self.transitions = np.array(transitions, dtype=np.float64)
         self.states = states
         self.steps = steps
         self.reward_functions = []
@@ -94,65 +95,180 @@ class MarkovChain:
         return list(self.walk())
 
 
-def load_markov_chain(
+class ProbabilityBuilder:
+    def __init__(self, abr: float, ajbr: float, annual_ltb_prob: float) -> None:
+        self.abr = float(abr)
+        self.ajbr = float(ajbr)
+        self.aebr = float(abr) - float(ajbr)
+        self.annual_ltb_prob = float(annual_ltb_prob)
+        self.weekly_ltb_prob = float(annual_ltb_prob) / 52
+
+    def to_minor(self):
+        return probability_at_least_one_event(self.aebr, "annual")
+
+    def to_major(self):
+        return probability_at_least_one_event(self.ajbr, "annual")
+
+    def to_ltb(self):
+        return probability_at_least_one_event(self.weekly_ltb_prob, "weekly")
+
+    def to_healthy(self):
+        total = self.to_ltb() + self.to_minor() + self.to_major()
+        if total > 1:
+            print(f"Warning: Sum of probabilities ({total}) exceeds 1, clamping to 0")
+        return max(0, 1 - total)
+
+    def get_weekly_ltb(self):
+        """
+        Note: not a probability, annual ltb event divided to weeks count
+        """
+        return self.weekly_ltb_prob
+
+    def get_matrix(self):
+        # Columns [Healthy, Minor, Major, LTB, Death]
+        matrix = [
+            [
+                self.to_healthy(),
+                self.to_minor(),
+                self.to_major(),
+                self.to_ltb(),
+                0,
+            ],  # Row: Healthy
+            [
+                self.to_healthy(),
+                self.to_minor(),
+                self.to_major(),
+                self.to_ltb(),
+                0,
+            ],  # Row: Minor
+            [
+                self.to_healthy(),
+                self.to_minor(),
+                self.to_major(),
+                self.to_ltb(),
+                0,
+            ],  # Row: Major
+            [0.8, 0, 0, 0, 0.2],  # Row: LTB
+            [0, 0, 0, 0, 1],  # Row: Death
+        ]
+        return matrix
+
+
+def load_transition_matrix(
     io: Path,
     sheet_name: str,
-    steps: int = NUM_CYCLES,
-) -> MarkovChain:
+) -> tuple[str, list[str], np.ndarray]:
     """
-    Load Markov chain from Excel file.
+    Load transition matrix from Excel file.
 
     Args:
         io: Path to Excel file
         sheet_name: Sheet containing transition matrix
-        steps: Number of steps to simulate
-        reward_function: Optional function to call at each step
 
     Returns:
-        Initialized MarkovChain instance
+        tuple(start_state, states, transition)
     """
     df = pd.read_excel(io, sheet_name=sheet_name)
     states = list(df.columns[1:-1])  # Exclude 'States' and 'SUM' columns
     start_state = states[0]
     transitions = df.drop(columns=["States", "SUM"]).to_numpy()
+    return (start_state, states, transitions)
 
-    return MarkovChain(
-        states=states,
-        transitions=transitions,
-        start_state=start_state,
-        steps=steps,
-    )
+
+def on_demand_psa(n_samples: int, **kwargs):
+    """
+    Args:
+        n_samples: number of samples
+        **kwargs: MarkovChain keyword arguments except transitions
+    """
+    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[12, 44]]}
+    param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
+
+    inputs = []
+    results = {
+        "total_factors_use": [],
+        "annual_factor_consumption": [],
+        "QALYS": [],
+    }  # Placeholder
+    for abr in param_samples:
+        abr = round(float(abr[0]))  # array to float
+        ajbr = round(0.75 * abr)
+        builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.021)
+        transition = builder.get_matrix()
+        markov = MarkovChain(transitions=transition, **kwargs)
+        markov.add_reward_function(on_demand_factor_consumption)
+        markov.run()
+        rewards = markov.collect_rewards()
+
+        # Store results
+        n_cycles = kwargs.get("steps")
+        inputs.append({"abr": abr, "ajbr": ajbr})
+        total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__])
+        results["total_factors_use"].append(total_factor_use)
+        results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+    return inputs, results
+
+
+def prophylaxis_psa(n_samples: int, **kwargs):
+    """
+    Args:
+        n_samples: number of samples
+        **kwargs: MarkovChain keyword arguments
+    """
+    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[3.66, 20.27]]}
+    param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
+    inputs = []
+    results = {
+        "total_factors_use": [],
+        "annual_factor_consumption": [],
+        "QALYS": [],
+    }  # Placeholder
+    for abr in param_samples:
+        abr = round(float(abr[0]))  # array to float
+        ajbr = round(0.75 * abr)
+        builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
+        transition = builder.get_matrix()
+        markov = MarkovChain(transitions=transition, **kwargs)
+        markov.add_reward_function(prophylaxis_factor_consumption)
+        markov.run()
+        rewards = markov.collect_rewards()
+
+        # Store results
+        n_cycles = kwargs.get("steps")
+        inputs.append({"abr": abr, "ajbr": ajbr})
+        total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__])
+        results["total_factors_use"].append(total_factor_use)
+        results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+    return inputs, results
+
+
+# TODO:
+# Make sure dosing are tuned
 
 
 def on_demand_factor_consumption(step: int, state: str):
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
-    # print(f"Week {step}: Weight = {weight} kg")
-    # print(f"Current state: {state}")
     injected_dose = 0
     if state.lower() == "minor":
-        injected_dose = weight * 25  # (20 * 1.25)
+        injected_dose = round(weight * 40)  # (20 * 2)
     elif state.lower() == "major":
-        injected_dose = weight * 90  # 30 * 3
+        injected_dose = round(weight * 120)  # (30 * 4)
     elif state.lower() == "lt_bleeding":
-        injected_dose = weight * 250
-    # print(f"Weekly injected dose: {injected_dose} unit")
-    # print(64 * "-")
+        injected_dose = round(weight * 300)
     return injected_dose
 
 
 def prophylaxis_factor_consumption(step: int, state: str):
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
-    # print(f"Week {step}: Weight = {weight} kg")
-    # print(f"Current state: {state}")
-    injected_dose = weight * 25 * 2
+    # TODO:
+    # Modified prophylaxis? PSA
+    injected_dose = round(weight * 25 * 2)  # (Standard prophylaxis dosing)
     if state.lower() == "minor":
-        injected_dose += weight * 25  # (20 * 1.25)
+        injected_dose += round(weight * 40)  # (20 * 2)
     elif state.lower() == "major":
-        injected_dose += weight * 90  # 30 * 3
+        injected_dose += round(weight * 120)  # (30 * 4)
     elif state.lower() == "lt_bleeding":
-        injected_dose += weight * 250
-    # print(f"Weekly injected dose: {injected_dose} unit")
-    # print(64 * "-")
+        injected_dose += round(weight * 300)
     return injected_dose
