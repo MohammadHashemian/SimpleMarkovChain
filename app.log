@@ -1,1 +1,2 @@
 DEBUG: Set display.max_colwidth to None
+DEBUG: Suppressing matplotlib font manager logger
