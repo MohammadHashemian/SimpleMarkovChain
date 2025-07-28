@@ -9,6 +9,7 @@ from src.data.loaders import (
 from src.processing.distribution_adjuster import adjust_age_distribution
 from model_dep import simulation
 from pathlib import Path
+from time import time
 import model.markov
 import model.analysis
 import model.constants
@@ -64,7 +65,7 @@ def markov(
     plot: bool = typer.Option(False, "--plot", help="Generate the plots of results."),
 ):
     num_steps = model.constants.NUM_CYCLES
-    np.random.seed(42)  # For reproducibility
+    # np.random.seed(42)  # For reproducibility
 
     # Validate n_samples
     if n_samples <= 0:
@@ -76,10 +77,12 @@ def markov(
         io=PROJECT_ROOT / "data" / "Transitions.xlsx",
         sheet_name="on_demand",
     )
+    new = time()
     on_demand_inputs, on_demand_results = model.markov.on_demand_psa(
         states=states, start_state=initial_state, steps=num_steps, n_samples=n_samples
     )
-    typer.echo("On_Demand Simulation completed.")
+    exc = time()
+    typer.echo(f"On_Demand Simulation completed in {(exc - new):.0f} seconds.")
     typer.echo(f"Number of samples: {len(on_demand_inputs)}")
     typer.echo(f"Sample input example: {on_demand_inputs[0]}")
     typer.echo(
@@ -88,12 +91,15 @@ def markov(
     typer.echo(
         f"Mean annual factor consumption: {np.mean(on_demand_results['annual_factor_consumption']):.0f}"
     )
+    typer.echo(f"Mean Discounted QALYS {np.mean(on_demand_results['QALYS']):.0f}")
 
     # Prophylaxis
+    new = time()
     prophylaxis_inputs, prophylaxis_results = model.markov.prophylaxis_psa(
         states=states, start_state=initial_state, steps=num_steps, n_samples=n_samples
     )
-    typer.echo("Prophylaxis Simulation completed.")
+    exc = time()
+    typer.echo(f"Prophylaxis Simulation completed in {(exc - new):.0f} seconds.")
     typer.echo(f"Number of samples: {len(prophylaxis_inputs)}")
     typer.echo(f"Sample input example: {prophylaxis_inputs[0]}")
     typer.echo(
@@ -102,6 +108,7 @@ def markov(
     typer.echo(
         f"Mean annual factor consumption: {np.mean(prophylaxis_results['annual_factor_consumption']):.0f}"
     )
+    typer.echo(f"Mean Discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.0f}")
 
     if plot:
         suppress_matplotlib_debug()

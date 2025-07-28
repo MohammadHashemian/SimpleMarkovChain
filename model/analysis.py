@@ -17,7 +17,7 @@ def create_plots(
 ) -> Tuple[Figure, Figure]:
     """Create separate scatter and histogram plots in individual figures"""
     # Create figure with two subplots
-    scatter_fig = plt.figure(figsize=(10, 8))
+    scatter_fig = plt.figure(figsize=(12, 8))
     scatter_ax: Axes = scatter_fig.add_subplot(1, 1, 1)
 
     # Extract data for plotting

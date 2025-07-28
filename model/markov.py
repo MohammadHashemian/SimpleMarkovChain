@@ -197,6 +197,7 @@ def on_demand_psa(n_samples: int, **kwargs):
         transition = builder.get_matrix()
         markov = MarkovChain(transitions=transition, **kwargs)
         markov.add_reward_function(on_demand_factor_consumption)
+        markov.add_reward_function(utility_reward_function)
         markov.run()
         rewards = markov.collect_rewards()
 
@@ -204,6 +205,7 @@ def on_demand_psa(n_samples: int, **kwargs):
         n_cycles = kwargs.get("steps")
         inputs.append({"abr": abr, "ajbr": ajbr})
         total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__])
+        total_utility_values = np.sum(rewards[utility_reward_function.__name__])
         results["total_factors_use"].append(total_factor_use)
         results["total_factors_costs"].append(
             total_factor_use
@@ -211,6 +213,7 @@ def on_demand_psa(n_samples: int, **kwargs):
             / constants.PPP_CONVERSION_FACTOR
         )
         results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+        results["QALYS"].append(total_utility_values)
     return inputs, results
 
 
@@ -237,6 +240,7 @@ def prophylaxis_psa(n_samples: int, **kwargs):
         transition = builder.get_matrix()
         markov = MarkovChain(transitions=transition, **kwargs)
         markov.add_reward_function(prophylaxis_factor_consumption)
+        markov.add_reward_function(utility_reward_function)
         markov.run()
         rewards = markov.collect_rewards()
 
@@ -244,6 +248,7 @@ def prophylaxis_psa(n_samples: int, **kwargs):
         n_cycles = kwargs.get("steps")
         inputs.append({"abr": abr, "ajbr": ajbr})
         total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__])
+        total_utility_values = np.sum(rewards[utility_reward_function.__name__])
         results["total_factors_use"].append(total_factor_use)
         results["total_factors_costs"].append(
             total_factor_use
@@ -251,6 +256,7 @@ def prophylaxis_psa(n_samples: int, **kwargs):
             / constants.PPP_CONVERSION_FACTOR
         )
         results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+        results["QALYS"].append(total_utility_values)
     return inputs, results
 
 
@@ -270,7 +276,33 @@ def on_demand_factor_consumption(step: int, state: str):
     return injected_dose
 
 
-def prophylaxis_factor_consumption(step: int, state: str):
+def utility_reward_function(step: int, state: str) -> float:
+    """Returns utility values for each health state"""
+    utility_value = 0
+    state = state.lower()
+    match state:
+        case "healthy":
+            utility_value = (0.85 * 1 / 52) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "bleeding":
+            utility_value = (0.60 * 1 / 52) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "joint_bleeding":
+            utility_value = (0.50 * 1 / 52) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "lt_bleeding":
+            utility_value = (0.25 * 1 / 52) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "death":
+            utility_value = 0
+    return utility_value
+
+
+def prophylaxis_factor_consumption(step: int, state: str) -> int:
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
