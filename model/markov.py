@@ -4,6 +4,7 @@ from model.utils import probability_at_least_one_event
 from model import constants
 from pathlib import Path
 from SALib.sample import saltelli
+import math
 import numpy as np
 import pandas as pd
 
@@ -19,6 +20,7 @@ class MarkovChain:
         transitions: Union[List[List[np.float64]], np.ndarray],
         start_state: str,
         steps: int,
+        **psa_kwargs,
     ) -> None:
         """
         Initialize Markov chain with states, transitions, and optional reward function.
@@ -34,6 +36,7 @@ class MarkovChain:
         self.steps = steps
         self.reward_functions = []
         self.rewards: Dict[str, List[float | int]] = {}
+        self.psa_kwargs = psa_kwargs
 
         # Validate inputs
         if self.transitions.ndim != 2:
@@ -64,7 +67,7 @@ class MarkovChain:
         # Calculate reward for initial state (step 0)
         if self.reward_functions:
             for func in self.reward_functions:
-                r = func(step=0, state=self.states[current_state])
+                r = func(step=0, state=self.states[current_state], **self.psa_kwargs)
                 self.rewards[func.__name__].append(r)
 
         for step in range(self.steps):
@@ -78,7 +81,9 @@ class MarkovChain:
             # Calculate rewards for the new state
             if self.reward_functions:
                 for func in self.reward_functions:
-                    r = func(step=step, state=self.states[current_state])
+                    r = func(
+                        step=step, state=self.states[current_state], **self.psa_kwargs
+                    )
                     self.rewards[func.__name__].append(r)
 
         # Yield the final state
@@ -195,7 +200,12 @@ def on_demand_psa(n_samples: int, **kwargs):
         ajbr = round(0.75 * abr)
         builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.021)
         transition = builder.get_matrix()
-        markov = MarkovChain(transitions=transition, **kwargs)
+        markov = MarkovChain(
+            transitions=transition,
+            lambda_bleeding=(abr - ajbr) / 52,
+            lambda_joint_bleeding=ajbr / 52,
+            **kwargs,
+        )
         markov.add_reward_function(on_demand_factor_consumption)
         markov.add_reward_function(utility_reward_function)
         markov.run()
@@ -203,16 +213,26 @@ def on_demand_psa(n_samples: int, **kwargs):
 
         # Store results
         n_cycles = kwargs.get("steps")
+        if not n_cycles or not isinstance(n_cycles, int):
+            raise ValueError("Model number of steps not correctly defined for psa.")
         inputs.append({"abr": abr, "ajbr": ajbr})
-        total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__])
-        total_utility_values = np.sum(rewards[utility_reward_function.__name__])
+        total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__][1:])
+        total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
         results["total_factors_use"].append(total_factor_use)
-        results["total_factors_costs"].append(
-            total_factor_use
-            * constants.PRICE_PER_UI_FACTOR_VIII
-            / constants.PPP_CONVERSION_FACTOR
-        )
-        results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+        factor_consumption_list: list = rewards[on_demand_factor_consumption.__name__][
+            1:
+        ]
+        factor_costs = [
+            (
+                dose
+                * constants.PRICE_PER_UI_FACTOR_VIII
+                / constants.PPP_CONVERSION_FACTOR
+            )
+            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+            for i, dose in enumerate(factor_consumption_list)
+        ]
+        results["total_factors_costs"].append(np.sum(factor_costs) / (n_cycles / 52))
+        results["annual_factor_consumption"].append(total_factor_use / (n_cycles / 52))
         results["QALYS"].append(total_utility_values)
     return inputs, results
 
@@ -246,73 +266,105 @@ def prophylaxis_psa(n_samples: int, **kwargs):
 
         # Store results
         n_cycles = kwargs.get("steps")
+        if not n_cycles or not isinstance(n_cycles, int):
+            raise ValueError("Model number of steps not correctly defined for psa.")
         inputs.append({"abr": abr, "ajbr": ajbr})
-        total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__])
-        total_utility_values = np.sum(rewards[utility_reward_function.__name__])
+        total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__][1:])
+        total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
         results["total_factors_use"].append(total_factor_use)
-        results["total_factors_costs"].append(
-            total_factor_use
-            * constants.PRICE_PER_UI_FACTOR_VIII
-            / constants.PPP_CONVERSION_FACTOR
-        )
-        results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
+        factor_consumption_list: list = rewards[
+            prophylaxis_factor_consumption.__name__
+        ][1:]
+        factor_costs = [
+            (
+                dose
+                * constants.PRICE_PER_UI_FACTOR_VIII
+                / constants.PPP_CONVERSION_FACTOR
+            )
+            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+            for i, dose in enumerate(factor_consumption_list)
+        ]
+        results["total_factors_costs"].append(np.sum(factor_costs) / (n_cycles / 52))
+        results["annual_factor_consumption"].append(total_factor_use / (n_cycles / 52))
         results["QALYS"].append(total_utility_values)
     return inputs, results
 
 
-def on_demand_factor_consumption(step: int, state: str):
+def on_demand_factor_consumption(step: int, state: str, **kwargs):
     """Example reward function that calculates and prints body weight."""
+
+    def conditional_probs(k: int, l: float):
+        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
+
+    # Get lambda_value from kwargs
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+    number_of_bleeds = 1
+    if lambda_value != 0:
+        if not isinstance(lambda_value, float):
+            raise TypeError("No valid lambda value provided.")
+        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 4, 1)]
+        # Normalizing
+        events_probs = [p / sum(events_probs) for p in events_probs]
+        number_of_bleeds = np.random.choice([i for i in range(1, 4, 1)], p=events_probs)
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose = round(weight * constants.BLEEDING_STATE_DOSE)
+        injected_dose = round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
     elif state.lower() == "joint_bleeding":
         # Joint
-        injected_dose = round(weight * constants.JOINT_BLEEDING_STATE_DOSE)
+        injected_dose = round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
     elif state.lower() == "lt_bleeding":
         # Intra_cranial | Gastro | Neck & throat
-        injected_dose = round(weight * constants.LT_BLEEDING_STATE_DOSE)
+        injected_dose = round(weight * constants.LT_BLEEDING_DOSE)
     return injected_dose
 
 
-def utility_reward_function(step: int, state: str) -> float:
-    """Returns utility values for each health state"""
-    utility_value = 0
-    state = state.lower()
-    match state:
-        case "healthy":
-            utility_value = (0.85 * 1 / 52) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "bleeding":
-            utility_value = (0.60 * 1 / 52) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "joint_bleeding":
-            utility_value = (0.50 * 1 / 52) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "lt_bleeding":
-            utility_value = (0.25 * 1 / 52) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "death":
-            utility_value = 0
-    return utility_value
-
-
-def prophylaxis_factor_consumption(step: int, state: str) -> int:
+def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose += round(weight * constants.BLEEDING_STATE_DOSE)
+        injected_dose += round(weight * constants.BLEEDING_DOSE)
     elif state.lower() == "joint_bleeding":
         # Joint
-        injected_dose += round(weight * constants.JOINT_BLEEDING_STATE_DOSE)
+        injected_dose += round(weight * constants.JOINT_BLEEDING_DOSE)
     elif state.lower() == "lt_bleeding":
         # Intra_cranial | Gastro | Neck & throat
-        injected_dose += round(weight * constants.LT_BLEEDING_STATE_DOSE)
+        injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
     return injected_dose
+
+
+def utility_reward_function(step: int, state: str, **kwargs) -> float:
+    """Returns utility values for each health state"""
+    utility_value = 0.0
+    state = state.lower()
+    match state:
+        case "healthy":
+            utility_value = (0.85 * (1 / 52)) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "bleeding":
+            utility_value = (0.60 * (1 / 52)) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "joint_bleeding":
+            utility_value = (0.50 * (1 / 52)) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "lt_bleeding":
+            utility_value = (0.25 * (1 / 52)) / (
+                1 + constants.DISCOUNT_RATE_WEEKLY
+            ) ** step
+        case "death":
+            utility_value = 0
+    return utility_value

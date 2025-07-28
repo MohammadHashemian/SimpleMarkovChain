@@ -91,7 +91,10 @@ def markov(
     typer.echo(
         f"Mean annual factor consumption: {np.mean(on_demand_results['annual_factor_consumption']):.0f}"
     )
-    typer.echo(f"Mean Discounted QALYS {np.mean(on_demand_results['QALYS']):.0f}")
+    typer.echo(
+        f"Mean annual factor discounted costs: {np.mean(on_demand_results['total_factors_costs']):.0f}$, PPP"
+    )
+    typer.echo(f"Mean discounted QALYS {np.mean(on_demand_results['QALYS']):.0f}")
 
     # Prophylaxis
     new = time()
@@ -108,11 +111,14 @@ def markov(
     typer.echo(
         f"Mean annual factor consumption: {np.mean(prophylaxis_results['annual_factor_consumption']):.0f}"
     )
-    typer.echo(f"Mean Discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.0f}")
+    typer.echo(
+        f"Mean annual factor discounted costs: {np.mean(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
+    )
+    typer.echo(f"Mean discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.0f}")
 
     if plot:
         suppress_matplotlib_debug()
-        scatter, hist = model.analysis.create_plots(
+        scatter, hist, cost_fig = model.analysis.create_plots(
             on_demand_inputs,
             prophylaxis_inputs,
             on_demand_results,
@@ -128,6 +134,9 @@ def markov(
         )
         hist.savefig(
             save_dir / "factor_consumption_histogram.png", dpi=300, bbox_inches="tight"
+        )
+        cost_fig.savefig(
+            save_dir / "factor_costs_scatter.png", dpi=300, bbox_inches="tight"
         )
 
         plt.close(scatter)
