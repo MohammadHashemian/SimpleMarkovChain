@@ -10,6 +10,8 @@ from src.processing.distribution_adjuster import adjust_age_distribution
 from model_dep import simulation
 from pathlib import Path
 import model.markov
+import model.analysis
+import model.constants
 import matplotlib.pyplot as plt
 import numpy as np
 import typer
@@ -67,7 +69,7 @@ def new(
     n_samples: int = typer.Option(32, "--n-samples", help="Number of samples for PSA."),
     plot: bool = typer.Option(False, "--plot", help="Generate the plots of results."),
 ):
-    num_steps = 73 * 52
+    num_steps = model.constants.NUM_CYCLES
     np.random.seed(42)  # For reproducibility
 
     # Validate n_samples
@@ -109,120 +111,27 @@ def new(
 
     if plot:
         suppress_matplotlib_debug()
-        # Validate data
-        if not (
-            on_demand_results["total_factors_use"]
-            and prophylaxis_results["total_factors_use"]
-        ):
-            typer.echo("Error: No results to plot.")
-            raise typer.Exit(code=1)
-        if not (
-            on_demand_inputs
-            and "abr" in on_demand_inputs[0]
-            and prophylaxis_inputs
-            and "abr" in prophylaxis_inputs[0]
-        ):
-            typer.echo("Error: Invalid input data for plotting.")
-            raise typer.Exit(code=1)
-
-        # Create figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-
-        # Extract data for plotting
-        on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
-        on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
-        on_demand_factors = on_demand_results["total_factors_use"]
-        prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
-        prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
-        prophylaxis_factors = prophylaxis_results["total_factors_use"]
-
-        # Plot 1: Scatter plot of Total Factor Use vs. ABR for both strategies
-        scatter1 = ax1.scatter(
-            on_demand_abr,
-            on_demand_factors,
-            c=on_demand_ajbr,
-            cmap="viridis",
-            label="On-Demand",
-            alpha=0.6,
-            s=50,
+        scatter, hist = model.analysis.create_plots(
+            on_demand_inputs,
+            prophylaxis_inputs,
+            on_demand_results,
+            prophylaxis_results,
+            n_samples=n_samples,
         )
-        scatter2 = ax1.scatter(
-            prophylaxis_abr,
-            prophylaxis_factors,
-            c=prophylaxis_ajbr,
-            cmap="plasma",
-            label="Prophylaxis",
-            marker="^",
-            alpha=0.6,
-            s=50,
-        )
-        ax1.set_xlabel("Annual Bleeding Rate (ABR)")
-        ax1.set_ylabel("Total Factor Consumption (Units)")
-        ax1.set_title("Factor Consumption vs. ABR")
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        fig.colorbar(scatter1, ax=ax1, label="AJBR (On-Demand)")
-        # Optional: Add second colorbar for prophylaxis (uncommon but possible)
-        # fig.colorbar(scatter2, ax=ax1, label="AJBR (Prophylaxis)")
-
-        # Plot 2: Histogram of Total Factor Use for both strategies
-        bins = min(10, max(5, n_samples // 5))  # Adaptive bins based on n_samples
-        ax2.hist(
-            on_demand_factors,
-            bins=bins,
-            alpha=0.5,
-            label="On-Demand",
-            color="teal",
-        )
-        ax2.hist(
-            prophylaxis_factors,
-            bins=bins,
-            alpha=0.5,
-            label="Prophylaxis",
-            color="purple",
-        )
-        ax2.set_xlabel("Total Factor Consumption (Units)")
-        ax2.set_ylabel("Frequency")
-        ax2.set_title("Distribution of Factor Consumption")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-
         # Save plot
         save_dir = PROJECT_ROOT / "outputs" / "figures"
         save_dir.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
-        plt.savefig(
-            save_dir / "factor_consumption_comparison.png", dpi=300, bbox_inches="tight"
+        scatter.savefig(
+            save_dir / "factor_consumption_scatter.png", dpi=300, bbox_inches="tight"
         )
-        typer.echo(f"Plot saved to {save_dir / 'factor_consumption_comparison.png'}")
+        hist.savefig(
+            save_dir / "factor_consumption_histogram.png", dpi=300, bbox_inches="tight"
+        )
 
-    # on_demand_transition.run()
-    # total_consumption = np.sum(
-    #     on_demand_transition.collect_rewards()[model.markov.on_demand_factor_consumption.__name__]
-    # )
-    # annual_consumption = total_consumption / num_steps
-    # print(
-    #     f"Total factor consumption: {total_consumption} with annual: {annual_consumption}"
-    # )
-
-    # Prophylaxis
-    # prophylaxis = model.markov.load_transition_matrix(
-    #     io=PROJECT_ROOT / "data" / "Transitions.xlsx",
-    #     sheet_name="prophylaxis",
-    #     steps=73 * 52,
-    # )
-    # prophylaxis.add_reward_function(model.markov.prophylaxis_factor_consumption)
-    # # Run and print the sequence
-    # prophylaxis.run()
-    # total_consumption = np.sum(
-    #     prophylaxis.collect_rewards()[
-    #         model.markov.prophylaxis_factor_consumption.__name__
-    #     ]
-    # )
-    # annual_consumption = total_consumption / num_steps
-    # print(
-    #     f"Total factor consumption: {total_consumption} with annual: {annual_consumption}"
-    # )
+        plt.close(scatter)
+        plt.close(hist)
+        typer.echo(f"Plots saved to {save_dir}")
 
 
 if __name__ == "__main__":

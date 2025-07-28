@@ -1,15 +1,13 @@
 from typing import List, Union, Generator, Optional, Callable, Dict
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
+from model import constants
 from pathlib import Path
 from SALib.sample import saltelli
 import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-# Constants
-NUM_CYCLES = 73 * 52  # 73 years in weeks
 
 
 class MarkovChain:
@@ -181,12 +179,14 @@ def on_demand_psa(n_samples: int, **kwargs):
         n_samples: number of samples
         **kwargs: MarkovChain keyword arguments except transitions
     """
-    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[12, 44]]}
+    # Starts from 12 (?) or 0
+    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[0, 44]]}
     param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
 
     inputs = []
     results = {
         "total_factors_use": [],
+        "total_factors_costs": [],
         "annual_factor_consumption": [],
         "QALYS": [],
     }  # Placeholder
@@ -205,6 +205,11 @@ def on_demand_psa(n_samples: int, **kwargs):
         inputs.append({"abr": abr, "ajbr": ajbr})
         total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__])
         results["total_factors_use"].append(total_factor_use)
+        results["total_factors_costs"].append(
+            total_factor_use
+            * constants.PRICE_PER_UI_FACTOR_VIII
+            / constants.PPP_CONVERSION_FACTOR
+        )
         results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
     return inputs, results
 
@@ -215,11 +220,13 @@ def prophylaxis_psa(n_samples: int, **kwargs):
         n_samples: number of samples
         **kwargs: MarkovChain keyword arguments
     """
-    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[3.66, 20.27]]}
+    # Mean: 3.66
+    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[0, 28]]}
     param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
     inputs = []
     results = {
         "total_factors_use": [],
+        "total_factors_costs": [],
         "annual_factor_consumption": [],
         "QALYS": [],
     }  # Placeholder
@@ -238,6 +245,11 @@ def prophylaxis_psa(n_samples: int, **kwargs):
         inputs.append({"abr": abr, "ajbr": ajbr})
         total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__])
         results["total_factors_use"].append(total_factor_use)
+        results["total_factors_costs"].append(
+            total_factor_use
+            * constants.PRICE_PER_UI_FACTOR_VIII
+            / constants.PPP_CONVERSION_FACTOR
+        )
         results["annual_factor_consumption"].append(total_factor_use / n_cycles * 12)
     return inputs, results
 
@@ -251,11 +263,14 @@ def on_demand_factor_consumption(step: int, state: str):
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "minor":
-        injected_dose = round(weight * 40)  # (20 * 2)
+        # Muscle | illopsoas | Renal | Oral mucosa and dental
+        injected_dose = round(weight * 90)  # (30 * 3)
     elif state.lower() == "major":
-        injected_dose = round(weight * 120)  # (30 * 4)
+        # Joint
+        injected_dose = round(weight * 60)  # (30 * 2)
     elif state.lower() == "lt_bleeding":
-        injected_dose = round(weight * 300)
+        # Intra_cranial | Gastro | Neck & throat
+        injected_dose = round(weight * 500)
     return injected_dose
 
 
@@ -266,9 +281,12 @@ def prophylaxis_factor_consumption(step: int, state: str):
     # Modified prophylaxis? PSA
     injected_dose = round(weight * 25 * 2)  # (Standard prophylaxis dosing)
     if state.lower() == "minor":
-        injected_dose += round(weight * 40)  # (20 * 2)
+        # Muscle | illopsoas | Renal | Oral mucosa and dental
+        injected_dose += round(weight * 90)  # (30 * 3)
     elif state.lower() == "major":
-        injected_dose += round(weight * 120)  # (30 * 4)
+        # Joint
+        injected_dose += round(weight * 60)  # (30 * 2)
     elif state.lower() == "lt_bleeding":
-        injected_dose += round(weight * 300)
+        # Intra_cranial | Gastro | Neck & throat
+        injected_dose += round(weight * 500)
     return injected_dose
