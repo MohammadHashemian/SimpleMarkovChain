@@ -275,6 +275,46 @@ def on_demand_psa(n_samples: int, **kwargs):
     return inputs, results
 
 
+def prophylaxis_worker_function(abr, kwargs: dict):
+    """
+    Worker function to process a single abr value.
+    Args:
+        abr: Input array for ABR value
+        kwargs: MarkovChain keyword arguments
+    Returns:
+        Tuple of (input_dict, result_dict) for one iteration.
+    """
+    abr = round(float(abr[0]))  # array to float
+    ajbr = round(0.75 * abr)
+    builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
+    transition = builder.get_matrix()
+    markov = MarkovChain(transitions=transition, **kwargs)
+    markov.add_reward_function(prophylaxis_factor_consumption)
+    markov.add_reward_function(utility_reward_function)
+    markov.run()
+    rewards = markov.collect_rewards()
+    # Store results
+    n_cycles = kwargs.get("steps")
+    if not n_cycles or not isinstance(n_cycles, int):
+        raise ValueError("Model number of steps not correctly defined for psa.")
+    # Results
+    input_dict = {"abr": abr, "ajbr": ajbr}
+    result_dict = {}
+    total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__][1:])
+    total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
+    result_dict["total_factors_use"] = total_factor_use
+    factor_consumption_list: list = rewards[prophylaxis_factor_consumption.__name__][1:]
+    factor_costs = [
+        (dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.PPP_CONVERSION_FACTOR)
+        / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+        for i, dose in enumerate(factor_consumption_list)
+    ]
+    result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
+    result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52)
+    result_dict["QALYS"] = total_utility_values
+    return input_dict, result_dict
+
+
 def prophylaxis_psa(n_samples: int, **kwargs):
     """
     Args:
@@ -295,41 +335,29 @@ def prophylaxis_psa(n_samples: int, **kwargs):
     progress_bar: enlighten.Counter = manager.counter(
         total=len(param_samples), desc="Simulating prophylaxis:", unit="simulation"
     )
-    for abr in param_samples:
-        abr = round(float(abr[0]))  # array to float
-        ajbr = round(0.75 * abr)
-        builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
-        transition = builder.get_matrix()
-        markov = MarkovChain(transitions=transition, **kwargs)
-        markov.add_reward_function(prophylaxis_factor_consumption)
-        markov.add_reward_function(utility_reward_function)
-        markov.run()
-        rewards = markov.collect_rewards()
 
-        # Store results
-        n_cycles = kwargs.get("steps")
-        if not n_cycles or not isinstance(n_cycles, int):
-            raise ValueError("Model number of steps not correctly defined for psa.")
-        inputs.append({"abr": abr, "ajbr": ajbr})
-        total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__][1:])
-        total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
-        results["total_factors_use"].append(total_factor_use)
-        factor_consumption_list: list = rewards[
-            prophylaxis_factor_consumption.__name__
-        ][1:]
-        factor_costs = [
-            (
-                dose
-                * constants.PRICE_PER_UI_FACTOR_VIII
-                / constants.PPP_CONVERSION_FACTOR
+    def update_bar(_):
+        progress_bar.update(incr=1)
+
+    with multiprocessing.Pool(processes=6) as pool:
+        async_results = [
+            pool.apply_async(
+                func=prophylaxis_worker_function,
+                args=(abr, kwargs),
+                callback=update_bar,
             )
-            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
-            for i, dose in enumerate(factor_consumption_list)
+            for abr in param_samples
         ]
-        results["total_factors_costs"].append(np.sum(factor_costs) / (n_cycles / 52))
-        results["annual_factor_consumption"].append(total_factor_use / (n_cycles / 52))
-        results["QALYS"].append(total_utility_values)
-        progress_bar.update()
+        for res in async_results:
+            input_dict, result_dict = res.get()
+            inputs.append(input_dict)
+            results["total_factors_use"].append(result_dict["total_factors_use"])
+            results["total_factors_costs"].append(result_dict["total_factors_costs"])
+            results["annual_factor_consumption"].append(
+                result_dict["annual_factor_consumption"]
+            )
+            results["QALYS"].append(result_dict["QALYS"])
+
     manager.stop()
     return inputs, results
 
