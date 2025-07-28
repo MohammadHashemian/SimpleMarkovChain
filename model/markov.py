@@ -101,17 +101,17 @@ class ProbabilityBuilder:
         self.annual_ltb_prob = float(annual_ltb_prob)
         self.weekly_ltb_prob = float(annual_ltb_prob) / 52
 
-    def to_minor(self):
+    def to_bleeding(self):
         return probability_at_least_one_event(self.aebr, "annual")
 
-    def to_major(self):
+    def to_joint_bleeding(self):
         return probability_at_least_one_event(self.ajbr, "annual")
 
     def to_ltb(self):
         return probability_at_least_one_event(self.weekly_ltb_prob, "weekly")
 
     def to_healthy(self):
-        total = self.to_ltb() + self.to_minor() + self.to_major()
+        total = self.to_ltb() + self.to_bleeding() + self.to_joint_bleeding()
         if total > 1:
             print(f"Warning: Sum of probabilities ({total}) exceeds 1, clamping to 0")
         return max(0, 1 - total)
@@ -127,22 +127,22 @@ class ProbabilityBuilder:
         matrix = [
             [
                 self.to_healthy(),
-                self.to_minor(),
-                self.to_major(),
+                self.to_bleeding(),
+                self.to_joint_bleeding(),
                 self.to_ltb(),
                 0,
             ],  # Row: Healthy
             [
                 self.to_healthy(),
-                self.to_minor(),
-                self.to_major(),
+                self.to_bleeding(),
+                self.to_joint_bleeding(),
                 self.to_ltb(),
                 0,
             ],  # Row: Minor
             [
                 self.to_healthy(),
-                self.to_minor(),
-                self.to_major(),
+                self.to_bleeding(),
+                self.to_joint_bleeding(),
                 self.to_ltb(),
                 0,
             ],  # Row: Major
@@ -254,39 +254,33 @@ def prophylaxis_psa(n_samples: int, **kwargs):
     return inputs, results
 
 
-# TODO:
-# Make sure dosing are tuned
-
-
 def on_demand_factor_consumption(step: int, state: str):
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
     injected_dose = 0
-    if state.lower() == "minor":
+    if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose = round(weight * 90)  # (30 * 3)
-    elif state.lower() == "major":
+        injected_dose = round(weight * constants.BLEEDING_STATE_DOSE)
+    elif state.lower() == "joint_bleeding":
         # Joint
-        injected_dose = round(weight * 60)  # (30 * 2)
+        injected_dose = round(weight * constants.JOINT_BLEEDING_STATE_DOSE)
     elif state.lower() == "lt_bleeding":
         # Intra_cranial | Gastro | Neck & throat
-        injected_dose = round(weight * 500)
+        injected_dose = round(weight * constants.LT_BLEEDING_STATE_DOSE)
     return injected_dose
 
 
 def prophylaxis_factor_consumption(step: int, state: str):
     """Example reward function that calculates and prints body weight."""
     weight = cal_body_weight(step)
-    # TODO:
-    # Modified prophylaxis? PSA
-    injected_dose = round(weight * 25 * 2)  # (Standard prophylaxis dosing)
-    if state.lower() == "minor":
+    injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
+    if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose += round(weight * 90)  # (30 * 3)
-    elif state.lower() == "major":
+        injected_dose += round(weight * constants.BLEEDING_STATE_DOSE)
+    elif state.lower() == "joint_bleeding":
         # Joint
-        injected_dose += round(weight * 60)  # (30 * 2)
+        injected_dose += round(weight * constants.JOINT_BLEEDING_STATE_DOSE)
     elif state.lower() == "lt_bleeding":
         # Intra_cranial | Gastro | Neck & throat
-        injected_dose += round(weight * 500)
+        injected_dose += round(weight * constants.LT_BLEEDING_STATE_DOSE)
     return injected_dose

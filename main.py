@@ -58,15 +58,9 @@ async def process(execute: bool):
         return False
 
 
-@app.command(help="Runs markov model simulation.")
-def markov():
-    suppress_matplotlib_debug()
-    simulation.run()
-
-
 @app.command(help="Runs new markov model simulation.")
-def new(
-    n_samples: int = typer.Option(32, "--n-samples", help="Number of samples for PSA."),
+def markov(
+    n_samples: int = typer.Option(64, "--n-samples", help="Number of samples for PSA."),
     plot: bool = typer.Option(False, "--plot", help="Generate the plots of results."),
 ):
     num_steps = model.constants.NUM_CYCLES
