@@ -411,7 +411,7 @@ def calculate_number_of_bleeds(state: str, **kwargs) -> int:
 def on_demand_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ):
-    """Example reward function that calculates and prints body weight."""
+    """Reward function that calculates factor viii consumption per bleed even per patient body weight over time."""
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "bleeding":
@@ -429,7 +429,7 @@ def on_demand_factor_consumption(
 def prophylaxis_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ) -> int:
-    """Example reward function that calculates and prints body weight."""
+    """Reward function that calculates factor viii consumption per bleed even per patient body weight over time."""
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
