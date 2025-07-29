@@ -114,7 +114,7 @@ def markov(
     typer.echo(
         f"Mean annual factor discounted costs: {np.mean(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
     )
-    typer.echo(f"Mean discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.0f}")
+    typer.echo(f"Mean discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.2f}")
 
     if plot:
         suppress_matplotlib_debug()

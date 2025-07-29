@@ -1,15 +1,14 @@
-from typing import List, Union, Generator, Optional, Callable, Dict
+from typing import List, Union, Generator, Optional, Callable, Dict, Literal
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
 from model import constants
-from pathlib import Path
 from SALib.sample import saltelli
+from pathlib import Path
 import math
 import numpy as np
 import pandas as pd
-import enlighten
-import tqdm
 import multiprocessing
+import enlighten
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -200,8 +199,9 @@ def on_demand_worker_function(abr, kwargs: dict):
         lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
         **kwargs,
     )
+    # Wrap utility_reward_function to track cumulative bleeds
     markov.add_reward_function(on_demand_factor_consumption)
-    markov.add_reward_function(utility_reward_function)
+    markov.add_reward_function(utility_reward_function_wrapper("on_demand"))
     markov.run()
     rewards = markov.collect_rewards()
     # Store results
@@ -211,7 +211,7 @@ def on_demand_worker_function(abr, kwargs: dict):
     input_dict = {"abr": abr, "ajbr": ajbr}
     result_dict = {}
     total_factor_use = np.sum(rewards[on_demand_factor_consumption.__name__][1:])
-    total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
+    total_utility_values = np.sum(rewards["utility_reward_function"][1:])
     result_dict["total_factors_use"] = total_factor_use
     factor_consumption_list: list = rewards[on_demand_factor_consumption.__name__][1:]
     factor_costs = [
@@ -294,8 +294,9 @@ def prophylaxis_worker_function(abr, kwargs: dict):
         lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
         **kwargs,
     )
+    # Wrap utility_reward_function to track cumulative bleeds
     markov.add_reward_function(prophylaxis_factor_consumption)
-    markov.add_reward_function(utility_reward_function)
+    markov.add_reward_function(utility_reward_function_wrapper("prophylaxis"))
     markov.run()
     rewards = markov.collect_rewards()
     # Store results
@@ -306,7 +307,7 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     input_dict = {"abr": abr, "ajbr": ajbr}
     result_dict = {}
     total_factor_use = np.sum(rewards[prophylaxis_factor_consumption.__name__][1:])
-    total_utility_values = np.sum(rewards[utility_reward_function.__name__][1:])
+    total_utility_values = np.sum(rewards["utility_reward_function"][1:])
     result_dict["total_factors_use"] = total_factor_use
     factor_consumption_list: list = rewards[prophylaxis_factor_consumption.__name__][1:]
     factor_costs = [
@@ -367,9 +368,8 @@ def prophylaxis_psa(n_samples: int, **kwargs):
     return inputs, results
 
 
-def on_demand_factor_consumption(step: int, state: str, **kwargs):
-    """Example reward function that calculates and prints body weight."""
-
+def calculate_number_of_bleeds(state: str, **kwargs) -> int:
+    # Conditional probability formula
     def conditional_probs(k: int, l: float):
         return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
 
@@ -391,6 +391,12 @@ def on_demand_factor_consumption(step: int, state: str, **kwargs):
         # Normalizing
         events_probs = [p / sum(events_probs) for p in events_probs]
         number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
+    return number_of_bleeds
+
+
+def on_demand_factor_consumption(step: int, state: str, **kwargs):
+    """Example reward function that calculates and prints body weight."""
+    number_of_bleeds = calculate_number_of_bleeds(state, **kwargs)
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "bleeding":
@@ -407,28 +413,7 @@ def on_demand_factor_consumption(step: int, state: str, **kwargs):
 
 def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
     """Example reward function that calculates and prints body weight."""
-
-    def conditional_probs(k: int, l: float):
-        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
-
-    # Get lambda_value from kwargs
-    lambda_value = (
-        kwargs.get("lambda_bleeding")
-        if state.lower() == "bleeding"
-        else (
-            kwargs.get("lambda_joint_bleeding")
-            if state.lower() == "joint_bleeding"
-            else 0
-        )
-    )
-    number_of_bleeds = 1
-    if lambda_value != 0:
-        if not isinstance(lambda_value, float):
-            raise TypeError("No valid lambda value provided.")
-        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
-        # Normalizing
-        events_probs = [p / sum(events_probs) for p in events_probs]
-        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
+    number_of_bleeds = calculate_number_of_bleeds(state, **kwargs)
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
@@ -445,27 +430,49 @@ def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
     return injected_dose
 
 
-def utility_reward_function(step: int, state: str, **kwargs) -> float:
-    """Returns utility values for each health state"""
-    utility_value = 0.0
-    state = state.lower()
-    match state:
-        case "healthy":
-            utility_value = (0.85 * (1 / 52)) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "bleeding":
-            utility_value = (0.60 * (1 / 52)) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "joint_bleeding":
-            utility_value = (0.50 * (1 / 52)) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "lt_bleeding":
-            utility_value = (0.25 * (1 / 52)) / (
-                1 + constants.DISCOUNT_RATE_WEEKLY
-            ) ** step
-        case "death":
-            utility_value = 0
-    return utility_value
+def utility_reward_function_wrapper(treatment: Literal["on_demand", "prophylaxis"]):
+    """Factory function to create a utility reward function with bleed tracking per treatment regimes."""
+    cumulative_bleeds = [0]  # Use a list to allow modification in closure
+
+    def utility_reward_function(step: int, state: str, **kwargs) -> float:
+        """Returns utility values for each health state with event-based decay for healthy state."""
+        # Increment cumulative bleeds based on the state at this step
+        state_lower = state.lower()
+        if state_lower in ["bleeding", "joint_bleeding"]:
+            cumulative_bleeds[0] += 1
+        decrement_per_bleed = (
+            0.0018
+            if treatment == "prophylaxis"
+            else 0.0003725 if treatment == "on_demand" else None
+        )
+        if decrement_per_bleed is None:
+            raise ValueError(f"Invalid treatment argument: {treatment}")
+        utility_value = 0.0
+        match state_lower:
+            case "healthy":
+                # Base utility with decay based on cumulative bleeding events
+                base_utility = 0.85
+                decrement = decrement_per_bleed * cumulative_bleeds[0]
+                adjusted_utility = max(
+                    0.65, base_utility - decrement
+                )  # Minimum utility of 0.65
+                utility_value = (adjusted_utility * (1 / 52)) / (
+                    1 + constants.DISCOUNT_RATE_WEEKLY
+                ) ** step
+            case "bleeding":
+                utility_value = (0.60 * (1 / 52)) / (
+                    1 + constants.DISCOUNT_RATE_WEEKLY
+                ) ** step
+            case "joint_bleeding":
+                utility_value = (0.50 * (1 / 52)) / (
+                    1 + constants.DISCOUNT_RATE_WEEKLY
+                ) ** step
+            case "lt_bleeding":
+                utility_value = (0.25 * (1 / 52)) / (
+                    1 + constants.DISCOUNT_RATE_WEEKLY
+                ) ** step
+            case "death":
+                utility_value = 0
+        return utility_value
+
+    return utility_reward_function
