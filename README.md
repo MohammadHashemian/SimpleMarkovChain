@@ -1,3 +1,4 @@
 TODO:
 
-- check out why table bleedings fractions does not sum to 1
+- consider arthropathy utility value some where.
+- test model accuracy if data comes available.
