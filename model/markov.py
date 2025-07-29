@@ -66,10 +66,18 @@ class MarkovChain:
         if steps:
             self.steps = steps
 
-        # Calculate reward for initial state (step 0)
+        # Calculate reward for initial state (S_0)
         if self.reward_functions:
+            bleeds_count_per_week_factor = calculate_number_of_bleeds(
+                state=self.states[current_state], **self.psa_kwargs
+            )
             for func in self.reward_functions:
-                r = func(step=0, state=self.states[current_state], **self.psa_kwargs)
+                r = func(
+                    step=0,
+                    state=self.states[current_state],
+                    number_of_bleeds=bleeds_count_per_week_factor,
+                    **self.psa_kwargs,
+                )
                 self.rewards[func.__name__].append(r)
 
         for step in range(self.steps):
@@ -79,12 +87,18 @@ class MarkovChain:
             # Transition to next state
             probs = self.transitions[current_state]
             current_state = np.random.choice(self.num_states, p=probs)
+            bleeds_count_per_week_factor = calculate_number_of_bleeds(
+                state=self.states[current_state], **self.psa_kwargs
+            )
 
             # Calculate rewards for the new state
             if self.reward_functions:
                 for func in self.reward_functions:
                     r = func(
-                        step=step, state=self.states[current_state], **self.psa_kwargs
+                        step=step,
+                        state=self.states[current_state],
+                        number_of_bleeds=bleeds_count_per_week_factor,
+                        **self.psa_kwargs,
                     )
                     self.rewards[func.__name__].append(r)
 
@@ -394,9 +408,10 @@ def calculate_number_of_bleeds(state: str, **kwargs) -> int:
     return number_of_bleeds
 
 
-def on_demand_factor_consumption(step: int, state: str, **kwargs):
+def on_demand_factor_consumption(
+    step: int, state: str, number_of_bleeds: int, **psa_kwargs
+):
     """Example reward function that calculates and prints body weight."""
-    number_of_bleeds = calculate_number_of_bleeds(state, **kwargs)
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "bleeding":
@@ -411,9 +426,10 @@ def on_demand_factor_consumption(step: int, state: str, **kwargs):
     return injected_dose
 
 
-def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
+def prophylaxis_factor_consumption(
+    step: int, state: str, number_of_bleeds: int, **psa_kwargs
+) -> int:
     """Example reward function that calculates and prints body weight."""
-    number_of_bleeds = calculate_number_of_bleeds(state, **kwargs)
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
