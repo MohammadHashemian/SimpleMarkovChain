@@ -215,7 +215,7 @@ def on_demand_worker_function(abr, kwargs: dict):
     )
     # Wrap utility_reward_function to track cumulative bleeds
     markov.add_reward_function(on_demand_factor_consumption)
-    markov.add_reward_function(utility_reward_function_wrapper("on_demand"))
+    markov.add_reward_function(construct_utility_reward_function("on_demand"))
     markov.run()
     rewards = markov.collect_rewards()
     # Store results
@@ -310,7 +310,7 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     )
     # Wrap utility_reward_function to track cumulative bleeds
     markov.add_reward_function(prophylaxis_factor_consumption)
-    markov.add_reward_function(utility_reward_function_wrapper("prophylaxis"))
+    markov.add_reward_function(construct_utility_reward_function("prophylaxis"))
     markov.run()
     rewards = markov.collect_rewards()
     # Store results
@@ -429,7 +429,9 @@ def on_demand_factor_consumption(
 def prophylaxis_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ) -> int:
-    """Reward function that calculates factor viii consumption per bleed even per patient body weight over time."""
+    """
+    Reward function that calculates factor viii consumption per bleed even per patient body weight over time.
+    """
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
@@ -446,7 +448,7 @@ def prophylaxis_factor_consumption(
     return injected_dose
 
 
-def utility_reward_function_wrapper(treatment: Literal["on_demand", "prophylaxis"]):
+def construct_utility_reward_function(treatment: Literal["on_demand", "prophylaxis"]):
     """Factory function to create a utility reward function with bleed tracking per treatment regimes."""
     cumulative_bleeds = [0]  # Use a list to allow modification in closure
 
@@ -457,7 +459,7 @@ def utility_reward_function_wrapper(treatment: Literal["on_demand", "prophylaxis
         if state_lower in ["bleeding", "joint_bleeding"]:
             cumulative_bleeds[0] += 1
         decrement_per_bleed = (
-            0.0018
+            0.0018 * 0.45  # Decreased for tuning
             if treatment == "prophylaxis"
             else 0.0003725 if treatment == "on_demand" else None
         )
@@ -467,7 +469,7 @@ def utility_reward_function_wrapper(treatment: Literal["on_demand", "prophylaxis
         match state_lower:
             case "healthy":
                 # Base utility with decay based on cumulative bleeding events
-                base_utility = 0.85
+                base_utility = 0.85 if treatment == "on_demand" else 0.915
                 decrement = decrement_per_bleed * cumulative_bleeds[0]
                 adjusted_utility = max(
                     0.65, base_utility - decrement

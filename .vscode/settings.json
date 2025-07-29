@@ -35,6 +35,8 @@
         "suptitle",
         "TGJU",
         "viridis",
+        "vlines",
+        "xaxis",
         "xlabel",
         "xlim",
         "xscale",

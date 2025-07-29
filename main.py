@@ -118,7 +118,7 @@ def markov(
 
     if plot:
         suppress_matplotlib_debug()
-        scatter, hist, cost_fig = model.analysis.create_plots(
+        scatter, hist, cost_fig, utility_fig = model.analysis.create_plots(
             on_demand_inputs,
             prophylaxis_inputs,
             on_demand_results,
@@ -137,6 +137,9 @@ def markov(
         )
         cost_fig.savefig(
             save_dir / "factor_costs_scatter.png", dpi=300, bbox_inches="tight"
+        )
+        utility_fig.savefig(
+            save_dir / "utility_over_abr_scatter.png", dpi=300, bbox_inches="tight"
         )
 
         plt.close(scatter)

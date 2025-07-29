@@ -12,8 +12,8 @@ def create_plots(
     on_demand_results: Dict,
     prophylaxis_results: Dict,
     n_samples: int,
-) -> Tuple[Figure, Figure, Figure]:
-    """Create scatter, histogram, and cost vs. ABR plots in individual figures"""
+):
+
     # --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
     scatter_fig = plt.figure(figsize=(12, 8))
     scatter_ax: Axes = scatter_fig.add_subplot(1, 1, 1)
@@ -23,10 +23,12 @@ def create_plots(
     on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
     on_demand_factors = on_demand_results["total_factors_use"]
     on_demand_costs = on_demand_results["total_factors_costs"]
+    on_demand_utilities = on_demand_results["QALYS"]
     prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
     prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
     prophylaxis_factors = prophylaxis_results["total_factors_use"]
     prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+    prophylaxis_utilities = prophylaxis_results["QALYS"]
 
     # Scatter plot for factor consumption
     scatter1 = scatter_ax.scatter(
@@ -156,4 +158,41 @@ def create_plots(
     cost_ax.grid(True, alpha=0.3)
     cost_fig.colorbar(cost_scatter1, ax=cost_ax, label="AJBR (On-Demand)")
 
-    return scatter_fig, hist_fig, cost_fig
+    # --- Plot 4: Scatter plot (QALYS vs. ABR) ---
+    utility_fig = plt.figure(figsize=(12, 8))
+    utility_ax = utility_fig.add_subplot(1, 1, 1)
+
+    # Scatter plot for on_demand group
+    scatter1 = utility_ax.scatter(
+        on_demand_abr,
+        on_demand_utilities,
+        label="On-Demand",
+        c=on_demand_utilities,
+        cmap="viridis_r",
+        alpha=0.6,
+        s=50,  # Increase marker size for visibility
+    )
+
+    # Scatter plot for prophylaxis group
+    scatter2 = utility_ax.scatter(
+        prophylaxis_abr,
+        prophylaxis_utilities,
+        label="Prophylaxis",
+        c=prophylaxis_utilities,
+        cmap="plasma",
+        marker="^",
+        alpha=0.6,
+        s=50,
+    )
+    
+    plt.colorbar(scatter2, ax=utility_ax, label="Prophylaxis QALYs", pad=0.01)
+    plt.colorbar(scatter1, ax=utility_ax, label="On-Demand QALYs", pad=0.04)
+
+    # Customize axes
+    utility_ax.set_xlabel("Annual Bleeding Rate (ABR)")
+    utility_ax.set_ylabel("Discounted QALYs")
+    utility_ax.set_title("QALYs vs. Annual Bleeding Rate")
+    utility_ax.legend()
+    utility_ax.grid(True, linestyle="--", alpha=0.7)  # Add grid for readability
+
+    return scatter_fig, hist_fig, cost_fig, utility_fig
