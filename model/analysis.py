@@ -150,7 +150,7 @@ def create_plots(
     )
 
     cost_ax.set_xlabel("Annual Bleeding Rate (ABR)")
-    cost_ax.set_ylabel("Annual Factor Cost (USD)")
+    cost_ax.set_ylabel("Mean Annual Factor Cost (USD)")
     cost_ax.set_title("Factor Costs vs. ABR")
     cost_ax.legend()
     cost_ax.grid(True, alpha=0.3)

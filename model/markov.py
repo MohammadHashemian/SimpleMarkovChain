@@ -196,8 +196,8 @@ def on_demand_worker_function(abr, kwargs: dict):
     transition = builder.get_matrix()
     markov = MarkovChain(
         transitions=transition,
-        lambda_bleeding=(abr - ajbr) / 52,
-        lambda_joint_bleeding=ajbr / 52,
+        lambda_bleeding=(abr - ajbr) / 52,  # PSA_KWARGS
+        lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
         **kwargs,
     )
     markov.add_reward_function(on_demand_factor_consumption)
@@ -288,7 +288,12 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     ajbr = round(0.75 * abr)
     builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
     transition = builder.get_matrix()
-    markov = MarkovChain(transitions=transition, **kwargs)
+    markov = MarkovChain(
+        transitions=transition,
+        lambda_bleeding=(abr - ajbr) / 52,  # PSA_KWARGS
+        lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
+        **kwargs,
+    )
     markov.add_reward_function(prophylaxis_factor_consumption)
     markov.add_reward_function(utility_reward_function)
     markov.run()
@@ -382,10 +387,10 @@ def on_demand_factor_consumption(step: int, state: str, **kwargs):
     if lambda_value != 0:
         if not isinstance(lambda_value, float):
             raise TypeError("No valid lambda value provided.")
-        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 4, 1)]
+        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
         # Normalizing
         events_probs = [p / sum(events_probs) for p in events_probs]
-        number_of_bleeds = np.random.choice([i for i in range(1, 4, 1)], p=events_probs)
+        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
     weight = cal_body_weight(step)
     injected_dose = 0
     if state.lower() == "bleeding":
@@ -402,14 +407,38 @@ def on_demand_factor_consumption(step: int, state: str, **kwargs):
 
 def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
     """Example reward function that calculates and prints body weight."""
+
+    def conditional_probs(k: int, l: float):
+        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
+
+    # Get lambda_value from kwargs
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+    number_of_bleeds = 1
+    if lambda_value != 0:
+        if not isinstance(lambda_value, float):
+            raise TypeError("No valid lambda value provided.")
+        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
+        # Normalizing
+        events_probs = [p / sum(events_probs) for p in events_probs]
+        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
     weight = cal_body_weight(step)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose += round(weight * constants.BLEEDING_DOSE)
+        injected_dose += round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
     elif state.lower() == "joint_bleeding":
         # Joint
-        injected_dose += round(weight * constants.JOINT_BLEEDING_DOSE)
+        injected_dose += (
+            round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
+        )
     elif state.lower() == "lt_bleeding":
         # Intra_cranial | Gastro | Neck & throat
         injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
