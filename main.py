@@ -106,19 +106,21 @@ def markov(
     typer.echo(f"Number of samples: {len(prophylaxis_inputs)}")
     typer.echo(f"Sample input example: {prophylaxis_inputs[0]}")
     typer.echo(
-        f"Mean total factor use (Prophylaxis): {np.mean(prophylaxis_results['total_factors_use']):.0f}"
+        f"Median total factor use (Prophylaxis): {np.median(prophylaxis_results['total_factors_use']):.0f}"
     )
     typer.echo(
-        f"Mean annual factor consumption: {np.mean(prophylaxis_results['annual_factor_consumption']):.0f}"
+        f"Median annual factor consumption: {np.median(prophylaxis_results['annual_factor_consumption']):.0f}"
     )
     typer.echo(
-        f"Mean annual factor discounted costs: {np.mean(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor discounted costs: {np.median(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
     )
-    typer.echo(f"Mean discounted QALYS: {np.mean(prophylaxis_results['QALYS']):.2f}")
+    typer.echo(
+        f"Median discounted QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"
+    )
 
     if plot:
         suppress_matplotlib_debug()
-        scatter, hist, cost_fig, utility_fig = model.analysis.create_plots(
+        scatter, hist, cost, utility, icer = model.analysis.create_plots(
             on_demand_inputs,
             prophylaxis_inputs,
             on_demand_results,
@@ -135,15 +137,19 @@ def markov(
         hist.savefig(
             save_dir / "factor_consumption_histogram.png", dpi=300, bbox_inches="tight"
         )
-        cost_fig.savefig(
+        cost.savefig(
             save_dir / "factor_costs_scatter.png", dpi=300, bbox_inches="tight"
         )
-        utility_fig.savefig(
+        utility.savefig(
             save_dir / "utility_over_abr_scatter.png", dpi=300, bbox_inches="tight"
         )
+        icer.savefig(save_dir / "icer_scatter.png")
 
         plt.close(scatter)
         plt.close(hist)
+        plt.close(cost)
+        plt.close(utility)
+        plt.close(icer)
         typer.echo(f"Plots saved to {save_dir}")
 
 

@@ -1,9 +1,9 @@
-from typing import Tuple, List, Dict
+from typing import List, Dict
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 from statsmodels.robust.robust_linear_model import RLMResults
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+import numpy as np
 
 
 def create_plots(
@@ -184,15 +184,196 @@ def create_plots(
         alpha=0.6,
         s=50,
     )
-    
-    plt.colorbar(scatter2, ax=utility_ax, label="Prophylaxis QALYs", pad=0.01)
-    plt.colorbar(scatter1, ax=utility_ax, label="On-Demand QALYs", pad=0.04)
 
-    # Customize axes
+    plt.colorbar(scatter2, ax=utility_ax, label="Prophylaxis QALYs", pad=0.01)
+    plt.colorbar(scatter1, ax=utility_ax, label="On-Demand QALYs", pad=0.02)
+
     utility_ax.set_xlabel("Annual Bleeding Rate (ABR)")
     utility_ax.set_ylabel("Discounted QALYs")
     utility_ax.set_title("QALYs vs. Annual Bleeding Rate")
     utility_ax.legend()
     utility_ax.grid(True, linestyle="--", alpha=0.7)  # Add grid for readability
 
-    return scatter_fig, hist_fig, cost_fig, utility_fig
+    # --- Plot 4: Scatter plot (Costs vs. QALYs) ---
+    icer_fig = plt.figure(figsize=(14, 7))
+    icer_gs = icer_fig.add_gridspec(1, 2, width_ratios=[2, 1])
+    icer_ax = icer_fig.add_subplot(icer_gs[0])
+
+    # Prepare (Cost, QALY, ABR) pairs
+    on_demand_pair = [
+        (on_demand_costs[i], q, on_demand_abr[i])
+        for i, q in enumerate(on_demand_utilities)
+    ]
+    prophylaxis_pair = [
+        (prophylaxis_costs[i], q, prophylaxis_abr[i])
+        for i, q in enumerate(prophylaxis_utilities)
+    ]
+    icer_pairs = [
+        (pp[0] - op[0], pp[1] - op[1], pp[2] - op[2])
+        for op in on_demand_pair
+        for pp in prophylaxis_pair
+        if (pp[1] - op[1]) != 0
+    ]
+
+    # Categorize
+    wtp = 20_000
+    dominant, dominated, cost_eff, not_cost_eff, icers = [], [], [], [], []
+
+    for dc, dq, da in icer_pairs:
+        if dq < 0:  # Dominated: worse outcome, higher cost
+            pair = (float("inf"), (dc, dq, da))  # Use inf for dominated ICERs
+            dominated.append(pair)
+            continue
+        if dq == 0:  # Handle zero QALYs to avoid division by zero
+            pair = (float("inf"), (dc, dq, da))
+            not_cost_eff.append(pair)
+            continue
+        icer = dc / dq
+        icers.append(icer)
+        pair = (icer, (dc, dq, da))
+        if dc < 0 and dq > 0:  # Dominant: cost-saving, better outcome
+            dominant.append(pair)
+        elif icer <= wtp:  # Cost-effective
+            cost_eff.append(pair)
+        else:  # Not cost-effective
+            not_cost_eff.append(pair)
+
+    # Summary
+    delta_costs, delta_qalys, delta_abr = (
+        zip(*icer_pairs) if icer_pairs else ([], [], [])
+    )
+    print(f"Max Δ bleeding: {np.max(delta_abr) if delta_abr else 'N/A'} weeks")
+    print(
+        f"Dominant: {len(dominant)}, Cost-effective: {len(cost_eff)}, Not cost-effective: {len(not_cost_eff)}, Dominated: {len(dominated)}"
+    )
+
+    def median_icer(pairs):
+        values = [i for i, _ in pairs if np.isfinite(i)]
+        return np.median(values) if values else float("nan")
+
+    for label, pairs in [
+        ("dominant", dominant),
+        ("cost-effective", cost_eff),
+        ("not cost-effective", not_cost_eff),
+    ]:
+        med = median_icer(pairs)
+        print(
+            f"Median ICER ({label}): {'N/A' if np.isnan(med) else f'${med:,.2f}/QALY'}"
+        )
+
+    # Centroid
+    m_cost, m_qaly = np.median(delta_costs or [0]), np.median(delta_qalys or [0])
+    centroid = m_cost / m_qaly if m_qaly else float("inf")
+    print(
+        f"Median ICER: {'Undefined' if m_qaly == 0 else f'{centroid:,.0f}/QALY'}, Median ΔABR: {np.median(delta_abr):.2f}"
+    )
+
+    # Plot scatter
+    def scatter(pairs, label, marker, cmap="viridis", color=None):
+        if not pairs:
+            return None
+        _, data = zip(*pairs)
+        dc, dq, da = zip(*data)
+        return icer_ax.scatter(
+            dq,
+            dc,
+            c=da,
+            cmap=cmap,
+            color=color,
+            marker=marker,
+            alpha=0.6,
+            s=20,
+            label=label,
+        )
+
+    s_dmd = scatter(
+        dominated, "Dominated (More Cost, Worse Outcome)", "v", cmap="magma"
+    )
+    s_dom = scatter(dominant, "Dominant (Cost-Saving, More Effective)", "^")
+    s_ce = scatter(cost_eff, "Cost-Effective", "o")
+    s_nce = scatter(not_cost_eff, "Not Cost-Effective", "x")
+
+    # Colorbar
+    for ref in [s_dom, s_ce, s_nce, s_dmd]:
+        if ref:
+            plt.colorbar(ref, label="Δ ABR (weeks)")
+            break
+
+    # Centroid
+    icer_ax.scatter(
+        m_qaly, m_cost, color="black", marker="*", s=60, label="Centroid ICER", zorder=5
+    )
+    icer_ax.annotate(
+        f"${centroid:,.0f}/QALY",
+        (float(m_qaly), float(m_cost)),
+        textcoords="offset points",
+        xytext=(25, -100),
+        ha="center",
+        fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.5", edgecolor="black", facecolor="white"),
+    )
+
+    # Axes, lines
+    x_rng = np.array([min(delta_qalys or [0]) - 0.1, max(delta_qalys or [0]) + 0.1])
+    icer_ax.plot(x_rng, x_rng * wtp, "k--", alpha=0.8, label=f"WTP: ${wtp:,}/QALY")
+    icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
+    icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
+    icer_ax.set(
+        xlabel="Δ QALYs",
+        ylabel="Δ Cost ($)",
+        title="Cost-Effectiveness Plane",
+        ylim=(-50000, 50000),
+    )
+    icer_ax.grid(True, linestyle="--", alpha=0.7)
+    icer_ax.legend(loc="lower right")
+
+    # --- Histogram of ICERs ---
+    hist_ax = icer_fig.add_subplot(icer_gs[1])
+
+    hist_groups = [
+        ([icer for icer, _ in dominant], "green", "Dominant"),
+        ([icer for icer, _ in cost_eff], "blue", "Cost-Effective"),
+        ([icer for icer, _ in not_cost_eff], "red", "Not Cost-Effective"),
+        # Exclude dominated from histogram since ICERs are undefined (inf)
+    ]
+
+    for icers_list, color, label in hist_groups:
+        if icers_list:  # Only plot if list is not empty
+            hist_ax.hist(
+                icers_list,
+                bins=20,
+                range=(-50000, 50000),
+                color=color,
+                alpha=0.4,
+                label=label,
+            )
+
+    # Add frequency of dominated points as text annotation
+    hist_ax.text(
+        0.05,
+        0.5,  # Left center: 5% from left, 50% from bottom
+        f"Dominated: {len(dominated)} points (ICER undefined)",
+        transform=hist_ax.transAxes,
+        fontsize=9,
+        verticalalignment="center",
+        horizontalalignment="left",
+        rotation="vertical",
+        bbox=dict(boxstyle="round,pad=0.5", edgecolor="black", facecolor="white"),
+    )
+
+    # Add WTP line
+    hist_ax.axvline(
+        wtp,
+        color="black",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"WTP: ${wtp:,}/QALY",
+    )
+
+    hist_ax.set_xlabel("ICER ($/QALY)")
+    hist_ax.set_ylabel("Frequency")
+    hist_ax.set_title("ICER Distribution")
+    hist_ax.grid(True, linestyle="--", alpha=0.7, axis="x")
+    hist_ax.legend(loc="upper left")
+
+    return scatter_fig, hist_fig, cost_fig, utility_fig, icer_fig
