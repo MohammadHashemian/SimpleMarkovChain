@@ -1,1 +1,16 @@
 DEBUG: Set display.max_colwidth to None
+DEBUG: Suppressing matplotlib font manager logger
+INFO: Categorized ICERS pairs:
+INFO: Dominant: 981, Dominated: 2666
+INFO: Cost-effective: 2482, Not Cost-effective: 19395
+INFO: Asserted
+INFO: Max reduction on weeks spent with bleeding: 0 weeks
+INFO: Dominant: 981, Cost-effective: 19395, Not cost-effective: 2482, Dominated: 2666
+INFO: Median ICER (dominant): $-221.06/QALY
+INFO: Median ICER (cost-effective): $2,607.37/QALY
+INFO: Median ICER (not cost-effective): $39,708.52/QALY
+INFO: Median ICER: 4,406/QALY, Median ΔABR: -15.00
+INFO: Categorized ICERS pairs:
+INFO: Dominant: 981, Dominated: 2666
+INFO: Cost-effective: 2482, Not Cost-effective: 19395
+INFO: Asserted

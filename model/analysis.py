@@ -2,9 +2,13 @@ from typing import List, Dict
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from statsmodels.robust.robust_linear_model import RLMResults
+from src.utils.logger import get_logger
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
+
+
+logger = get_logger()
 
 
 # --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
@@ -243,8 +247,11 @@ def plot_qaly_vs_abr(*args):
     return utility_fig
 
 
-# --- Plot 4: Scatter plot (Costs vs. QALYs) ---
-def plot_costs_vs_qalys(*args):
+# Utility to plot ICERs plots
+WTP = 20_000
+
+
+def prepare_icer(*args):
     (
         on_demand_inputs,
         prophylaxis_inputs,
@@ -254,14 +261,11 @@ def plot_costs_vs_qalys(*args):
     ) = args
     # Extract data for plotting
     on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
-    on_demand_costs = on_demand_results["total_factors_costs"]
-    on_demand_utilities = on_demand_results["QALYS"]
     prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
+    on_demand_costs = on_demand_results["total_factors_costs"]
     prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+    on_demand_utilities = on_demand_results["QALYS"]
     prophylaxis_utilities = prophylaxis_results["QALYS"]
-    icer_fig = plt.figure(figsize=(14, 7))
-    icer_gs = icer_fig.add_gridspec(1, 2, width_ratios=[2, 1])
-    icer_ax = icer_fig.add_subplot(icer_gs[0])
 
     # Prepare (Cost, QALY, ABR) pairs
     on_demand_pair = [
@@ -272,18 +276,22 @@ def plot_costs_vs_qalys(*args):
         (prophylaxis_costs[i], q, prophylaxis_abr[i])
         for i, q in enumerate(prophylaxis_utilities)
     ]
+
+    # Removes Increase in ABR ICER, Impossible transition
     icer_pairs = [
         (pp[0] - op[0], pp[1] - op[1], pp[2] - op[2])
         for op in on_demand_pair
         for pp in prophylaxis_pair
-        if (pp[1] - op[1]) != 0
+        if not (pp[2] - op[2]) > 0
     ]
 
-    # Categorize
+    # Categorize ICERs
     wtp = 20_000
     dominant, dominated, cost_eff, not_cost_eff, icers = [], [], [], [], []
 
     for dc, dq, da in icer_pairs:
+        if da > 0:
+            logger.error("ICER calculation with positive delta ABR is prohibited")
         if dq < 0:  # Dominated: worse outcome, higher cost
             pair = (float("inf"), (dc, dq, da))  # Use inf for dominated ICERs
             dominated.append(pair)
@@ -301,13 +309,39 @@ def plot_costs_vs_qalys(*args):
             cost_eff.append(pair)
         else:  # Not cost-effective
             not_cost_eff.append(pair)
+    logger.info("Categorized ICERS pairs:")
+    logger.info(f"Dominant: {len(dominant)}, Dominated: {len(dominated)}")
+    logger.info(
+        f"Cost-effective: {len(not_cost_eff)}, Not Cost-effective: {len(cost_eff)}"
+    )
+    try:
+        assert np.isclose(
+            len(icer_pairs),
+            len(dominant) + len(dominated) + len(cost_eff) + len(not_cost_eff),
+        )
+        logger.info("Categorization asserted")
+    except AssertionError:
+        logger.warning("Data lost during categorization")
+    return icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers)
+
+
+# --- Plot 4: Scatter plot (Costs vs. QALYs) ---
+def plot_icer_scatter(*args):
+    icer_fig = plt.figure(figsize=(20, 10))
+    icer_ax = icer_fig.add_subplot(1, 1, 1)
+
+    icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers) = prepare_icer(
+        *args
+    )
 
     # Summary
     delta_costs, delta_qalys, delta_abr = (
         zip(*icer_pairs) if icer_pairs else ([], [], [])
     )
-    print(f"Max Δ bleeding: {np.max(delta_abr) if delta_abr else 'N/A'} weeks")
-    print(
+    logger.info(
+        f"Max reduction on weeks spent with bleeding: {np.max(delta_abr) if delta_abr else 'N/A'} weeks"
+    )
+    logger.info(
         f"Dominant: {len(dominant)}, Cost-effective: {len(cost_eff)}, Not cost-effective: {len(not_cost_eff)}, Dominated: {len(dominated)}"
     )
 
@@ -321,20 +355,21 @@ def plot_costs_vs_qalys(*args):
         ("not cost-effective", not_cost_eff),
     ]:
         med = median_icer(pairs)
-        print(
+        logger.info(
             f"Median ICER ({label}): {'N/A' if np.isnan(med) else f'${med:,.2f}/QALY'}"
         )
 
     # Centroid
     m_cost, m_qaly = np.median(delta_costs or [0]), np.median(delta_qalys or [0])
     centroid = m_cost / m_qaly if m_qaly else float("inf")
-    print(
+    logger.info(
         f"Median ICER: {'Undefined' if m_qaly == 0 else f'{centroid:,.0f}/QALY'}, Median ΔABR: {np.median(delta_abr):.2f}"
     )
 
     # Plot scatter
     def scatter(pairs, label, marker, cmap="viridis", color=None):
         if not pairs:
+            logger.warning(f"No pair value passed to {label} figure")
             return None
         _, data = zip(*pairs)
         dc, dq, da = zip(*data)
@@ -346,22 +381,25 @@ def plot_costs_vs_qalys(*args):
             color=color,
             marker=marker,
             alpha=0.6,
-            s=20,
+            s=1,
             label=label,
         )
 
     s_dmd = scatter(
-        dominated, "Dominated (More Cost, Worse Outcome)", "v", cmap="magma"
+        dominated, "Dominated (More Cost, Worse Outcome)", "v", cmap="Grays"
     )
     s_dom = scatter(dominant, "Dominant (Cost-Saving, More Effective)", "^")
-    s_ce = scatter(cost_eff, "Cost-Effective", "o")
-    s_nce = scatter(not_cost_eff, "Not Cost-Effective", "x")
+    s_ce = scatter(cost_eff, "Cost-Effective", "o", cmap="viridis")
+    s_nce = scatter(not_cost_eff, "Not Cost-Effective", "x", cmap="plasma")
 
-    # Colorbar
-    for ref in [s_dom, s_ce, s_nce, s_dmd]:
-        if ref:
-            plt.colorbar(ref, label="Δ ABR (weeks)")
-            break
+    # Color bars
+    plt.colorbar(s_dmd, ax=icer_ax, label="Dominated ΔABR (weeks)", location="left")
+    plt.colorbar(
+        s_nce,
+        ax=icer_ax,
+        label="Not Cost-Effective ΔABR (weeks)",
+    )
+    plt.colorbar(s_dom, ax=icer_ax, label="Dominant ΔABR (weeks)")
 
     # Centroid
     icer_ax.scatter(
@@ -371,7 +409,7 @@ def plot_costs_vs_qalys(*args):
         f"${centroid:,.0f}/QALY",
         (float(m_qaly), float(m_cost)),
         textcoords="offset points",
-        xytext=(25, -100),
+        xytext=(25, -75),
         ha="center",
         fontsize=8,
         bbox=dict(boxstyle="round,pad=0.5", edgecolor="black", facecolor="white"),
@@ -379,20 +417,34 @@ def plot_costs_vs_qalys(*args):
 
     # Axes, lines
     x_rng = np.array([min(delta_qalys or [0]) - 0.1, max(delta_qalys or [0]) + 0.1])
-    icer_ax.plot(x_rng, x_rng * wtp, "k--", alpha=0.8, label=f"WTP: ${wtp:,}/QALY")
+    icer_ax.plot(x_rng, x_rng * WTP, "k--", alpha=0.8, label=f"WTP: ${WTP:,}/QALY")
     icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.set(
         xlabel="Δ QALYs",
         ylabel="Δ Cost ($)",
         title="Cost-Effectiveness Plane",
-        ylim=(-50000, 50000),
+        ylim=(-20000, 40000),
     )
     icer_ax.grid(True, linestyle="--", alpha=0.7)
     icer_ax.legend(loc="lower right")
+    return icer_fig
+
+
+def plot_icer_histogram(*args):
+    icer_fig = plt.figure(figsize=(12, 8))
+    gs = icer_fig.add_gridspec(1, 2)
+
+    icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers) = prepare_icer(
+        *args
+    )
+
+    dmd_ax = icer_fig.add_subplot(gs[0])
+    # TODO:
+    # Dominated histogram ABR distribution here
 
     # --- Histogram of ICERs ---
-    hist_ax = icer_fig.add_subplot(icer_gs[1])
+    hist_ax = icer_fig.add_subplot(gs[1])
 
     hist_groups = [
         ([icer for icer, _ in dominant], "green", "Dominant"),
@@ -427,21 +479,22 @@ def plot_costs_vs_qalys(*args):
 
     # Add WTP line
     hist_ax.axvline(
-        wtp,
+        WTP,
         color="black",
         linestyle="--",
         linewidth=1.2,
-        label=f"WTP: ${wtp:,}/QALY",
+        label=f"WTP: ${WTP:,}/QALY",
     )
 
     hist_ax.set_xlabel("ICER ($/QALY)")
     hist_ax.set_ylabel("Frequency")
     hist_ax.set_title("ICER Distribution")
     hist_ax.grid(True, linestyle="--", alpha=0.7, axis="x")
-    hist_ax.legend(loc="upper left")
+    hist_ax.legend(loc="upper left", markerscale=100)
     return icer_fig
 
 
+# Plot all results
 def plot(
     on_demand_inputs: List[Dict],
     prophylaxis_inputs: List[Dict],
@@ -455,7 +508,8 @@ def plot(
         "factor_histogram": plot_consumption_hist,
         "costs_vs_abr": plot_costs_vs_abr,
         "qalys_vs_abr": plot_qaly_vs_abr,
-        "costs_vs_qalys": plot_costs_vs_qalys,
+        "costs_vs_qalys": plot_icer_scatter,
+        "icer_histogram": plot_icer_histogram,
     }
     for key, func in plot_functions.items():
         fig = func(

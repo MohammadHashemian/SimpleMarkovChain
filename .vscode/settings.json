@@ -30,6 +30,7 @@
         "levelname",
         "linestyle",
         "linregress",
+        "markerscale",
         "mediumturquoise",
         "mpatches",
         "mplot",
@@ -62,7 +63,8 @@
         "xytext",
         "ylabel",
         "ylim",
-        "zorder"
+        "zorder",
+        "ΔABR"
     ],
     "python-envs.pythonProjects": []
 }
