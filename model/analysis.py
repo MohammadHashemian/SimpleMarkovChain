@@ -3,6 +3,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from statsmodels.robust.robust_linear_model import RLMResults
 from src.utils.logger import get_logger
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
@@ -403,7 +404,7 @@ def plot_icer_scatter(*args):
 
     # Centroid
     icer_ax.scatter(
-        m_qaly, m_cost, color="black", marker="*", s=60, label="Centroid ICER", zorder=5
+        m_qaly, m_cost, color="black", marker="*", s=50, label="Centroid ICER", zorder=5
     )
     icer_ax.annotate(
         f"${centroid:,.0f}/QALY",
@@ -427,7 +428,61 @@ def plot_icer_scatter(*args):
         ylim=(-20000, 40000),
     )
     icer_ax.grid(True, linestyle="--", alpha=0.7)
-    icer_ax.legend(loc="lower right")
+
+    # Custom legend to handle different marker sizes
+    legend_elements = [
+        Line2D(
+            [0],
+            [0],
+            marker="v",
+            color="w",
+            label="Dominated (More Cost, Worse Outcome)",
+            markerfacecolor="gray",
+            markersize=10,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="^",
+            color="w",
+            label="Dominant (Cost-Saving, More Effective)",
+            markerfacecolor="blue",
+            markersize=10,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            label="Cost-Effective",
+            markerfacecolor="green",
+            markersize=10,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="x",
+            color="w",
+            label="Not Cost-Effective",
+            markerfacecolor="red",
+            markeredgecolor="red",
+            markersize=8,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="*",
+            color="w",
+            label="Centroid ICER",
+            markerfacecolor="black",
+            markersize=15,
+        ),
+        Line2D(
+            [0], [0], linestyle="--", color="black", label=f"WTP: ${WTP:,}/QALY"
+        ),  # WTP line
+    ]
+
+    icer_ax.legend(handles=legend_elements, loc="lower right")
     return icer_fig
 
 
@@ -490,7 +545,7 @@ def plot_icer_histogram(*args):
     hist_ax.set_ylabel("Frequency")
     hist_ax.set_title("ICER Distribution")
     hist_ax.grid(True, linestyle="--", alpha=0.7, axis="x")
-    hist_ax.legend(loc="upper left", markerscale=100)
+    hist_ax.legend(loc="upper left")
     return icer_fig
 
 
