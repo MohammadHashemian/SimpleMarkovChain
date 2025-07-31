@@ -1,20 +1,21 @@
 from typing import List, Dict
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from statsmodels.robust.robust_linear_model import RLMResults
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
 
 
-def create_plots(
-    on_demand_inputs: List[Dict],
-    prophylaxis_inputs: List[Dict],
-    on_demand_results: Dict,
-    prophylaxis_results: Dict,
-    n_samples: int,
-):
-
-    # --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
+# --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
+def plot_consumption_vs_abr(*args):
+    (
+        on_demand_inputs,
+        prophylaxis_inputs,
+        on_demand_results,
+        prophylaxis_results,
+        n_samples,
+    ) = args
     scatter_fig = plt.figure(figsize=(12, 8))
     scatter_ax: Axes = scatter_fig.add_subplot(1, 1, 1)
 
@@ -22,13 +23,9 @@ def create_plots(
     on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
     on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
     on_demand_factors = on_demand_results["total_factors_use"]
-    on_demand_costs = on_demand_results["total_factors_costs"]
-    on_demand_utilities = on_demand_results["QALYS"]
+    prophylaxis_factors = prophylaxis_results["total_factors_use"]
     prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
     prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
-    prophylaxis_factors = prophylaxis_results["total_factors_use"]
-    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
-    prophylaxis_utilities = prophylaxis_results["QALYS"]
 
     # Scatter plot for factor consumption
     scatter1 = scatter_ax.scatter(
@@ -80,7 +77,21 @@ def create_plots(
     scatter_ax.grid(True, alpha=0.3)
     scatter_fig.colorbar(scatter1, ax=scatter_ax, label="AJBR (On-Demand)")
 
-    # --- Plot 2: Histogram (Factor Consumption Distribution) ---
+    return scatter_fig
+
+
+# --- Plot 2: Histogram (Factor Consumption Distribution) ---
+def plot_consumption_hist(*args):
+    (
+        on_demand_inputs,
+        prophylaxis_inputs,
+        on_demand_results,
+        prophylaxis_results,
+        n_samples,
+    ) = args
+    # Extract data for plotting
+    on_demand_factors = on_demand_results["total_factors_use"]
+    prophylaxis_factors = prophylaxis_results["total_factors_use"]
     hist_fig = plt.figure(figsize=(10, 8))
     hist_ax: Axes = hist_fig.add_subplot(1, 1, 1)
     bins = min(10, max(5, n_samples // 5))  # Adaptive bins
@@ -103,8 +114,27 @@ def create_plots(
     hist_ax.set_title("Distribution of Factor Consumption")
     hist_ax.legend()
     hist_ax.grid(True, alpha=0.3)
+    return hist_fig
 
-    # --- Plot 3: Scatter plot (Costs vs. ABR) ---
+
+# --- Plot 3: Scatter plot (Costs vs. ABR) ---
+def plot_costs_vs_abr(*args):
+    (
+        on_demand_inputs,
+        prophylaxis_inputs,
+        on_demand_results,
+        prophylaxis_results,
+        n_samples,
+    ) = args
+
+    # Extract data for plotting
+    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
+    on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
+    on_demand_costs = on_demand_results["total_factors_costs"]
+    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
+    prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
+    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+
     cost_fig = plt.figure(figsize=(12, 8))
     cost_ax: Axes = cost_fig.add_subplot(1, 1, 1)
 
@@ -157,8 +187,25 @@ def create_plots(
     cost_ax.legend()
     cost_ax.grid(True, alpha=0.3)
     cost_fig.colorbar(cost_scatter1, ax=cost_ax, label="AJBR (On-Demand)")
+    return cost_fig
 
-    # --- Plot 4: Scatter plot (QALYS vs. ABR) ---
+
+# --- Plot 4: Scatter plot (QALYS vs. ABR) ---
+def plot_qaly_vs_abr(*args):
+    (
+        on_demand_inputs,
+        prophylaxis_inputs,
+        on_demand_results,
+        prophylaxis_results,
+        n_samples,
+    ) = args
+
+    # Extract data for plotting
+    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
+    on_demand_utilities = on_demand_results["QALYS"]
+    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
+    prophylaxis_utilities = prophylaxis_results["QALYS"]
+
     utility_fig = plt.figure(figsize=(12, 8))
     utility_ax = utility_fig.add_subplot(1, 1, 1)
 
@@ -193,8 +240,25 @@ def create_plots(
     utility_ax.set_title("QALYs vs. Annual Bleeding Rate")
     utility_ax.legend()
     utility_ax.grid(True, linestyle="--", alpha=0.7)  # Add grid for readability
+    return utility_fig
 
-    # --- Plot 4: Scatter plot (Costs vs. QALYs) ---
+
+# --- Plot 4: Scatter plot (Costs vs. QALYs) ---
+def plot_costs_vs_qalys(*args):
+    (
+        on_demand_inputs,
+        prophylaxis_inputs,
+        on_demand_results,
+        prophylaxis_results,
+        n_samples,
+    ) = args
+    # Extract data for plotting
+    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
+    on_demand_costs = on_demand_results["total_factors_costs"]
+    on_demand_utilities = on_demand_results["QALYS"]
+    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
+    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+    prophylaxis_utilities = prophylaxis_results["QALYS"]
     icer_fig = plt.figure(figsize=(14, 7))
     icer_gs = icer_fig.add_gridspec(1, 2, width_ratios=[2, 1])
     icer_ax = icer_fig.add_subplot(icer_gs[0])
@@ -375,5 +439,31 @@ def create_plots(
     hist_ax.set_title("ICER Distribution")
     hist_ax.grid(True, linestyle="--", alpha=0.7, axis="x")
     hist_ax.legend(loc="upper left")
+    return icer_fig
 
-    return scatter_fig, hist_fig, cost_fig, utility_fig, icer_fig
+
+def plot(
+    on_demand_inputs: List[Dict],
+    prophylaxis_inputs: List[Dict],
+    on_demand_results: Dict,
+    prophylaxis_results: Dict,
+    n_samples: int,
+) -> dict[str, Figure]:
+    figures = {}
+    plot_functions = {
+        "factor_consumption": plot_consumption_vs_abr,
+        "factor_histogram": plot_consumption_hist,
+        "costs_vs_abr": plot_costs_vs_abr,
+        "qalys_vs_abr": plot_qaly_vs_abr,
+        "costs_vs_qalys": plot_costs_vs_qalys,
+    }
+    for key, func in plot_functions.items():
+        fig = func(
+            on_demand_inputs,
+            prophylaxis_inputs,
+            on_demand_results,
+            prophylaxis_results,
+            n_samples,
+        )
+        figures[key] = fig
+    return figures

@@ -63,5 +63,6 @@
         "ylabel",
         "ylim",
         "zorder"
-    ]
+    ],
+    "python-envs.pythonProjects": []
 }

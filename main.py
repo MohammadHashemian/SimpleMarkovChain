@@ -120,7 +120,7 @@ def markov(
 
     if plot:
         suppress_matplotlib_debug()
-        scatter, hist, cost, utility, icer = model.analysis.create_plots(
+        plots = model.analysis.plot(
             on_demand_inputs,
             prophylaxis_inputs,
             on_demand_results,
@@ -131,25 +131,13 @@ def markov(
         save_dir = PROJECT_ROOT / "outputs" / "figures"
         save_dir.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
-        scatter.savefig(
-            save_dir / "factor_consumption_scatter.png", dpi=300, bbox_inches="tight"
-        )
-        hist.savefig(
-            save_dir / "factor_consumption_histogram.png", dpi=300, bbox_inches="tight"
-        )
-        cost.savefig(
-            save_dir / "factor_costs_scatter.png", dpi=300, bbox_inches="tight"
-        )
-        utility.savefig(
-            save_dir / "utility_over_abr_scatter.png", dpi=300, bbox_inches="tight"
-        )
-        icer.savefig(save_dir / "icer_scatter.png")
-
-        plt.close(scatter)
-        plt.close(hist)
-        plt.close(cost)
-        plt.close(utility)
-        plt.close(icer)
+        for name, fig in plots.items():
+            if not fig:
+                raise TypeError(
+                    f"Figure name {name}, is not defined, returned type: {type(fig)}"
+                )
+            fig.savefig(save_dir / f"{name}.png", dpi=300, bbox_inches="tight")
+            plt.close(fig)
         typer.echo(f"Plots saved to {save_dir}")
 
 
