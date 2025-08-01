@@ -1,5 +1,6 @@
 TODO:
 
+- remove outliers
 - sample data to plot ICER
 - asses quality adjusted life years per treatment arms, to validated reasonable effects on bleeding event on over all patient quality of life.
 - test model accuracy if data comes available.

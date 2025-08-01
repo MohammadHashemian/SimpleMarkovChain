@@ -10,15 +10,19 @@
         "axvline",
         "boxstyle",
         "cmap",
+        "cmin",
         "colorbar",
         "dotenv",
         "EABR",
         "edgecolor",
+        "endog",
+        "exog",
         "facecolor",
         "figsize",
         "fontsize",
         "gastro",
         "Gompertz",
+        "gridsize",
         "gridspec",
         "horizontalalignment",
         "ICER",
@@ -35,6 +39,7 @@
         "markerscale",
         "markersize",
         "mediumturquoise",
+        "mincnt",
         "mpatches",
         "mplot",
         "ncols",
@@ -67,7 +72,8 @@
         "ylabel",
         "ylim",
         "zorder",
-        "ΔABR"
+        "ΔABR",
+        "ΔQALYs"
     ],
     "python-envs.pythonProjects": []
 }

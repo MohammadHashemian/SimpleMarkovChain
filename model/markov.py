@@ -459,7 +459,7 @@ def construct_utility_reward_function(treatment: Literal["on_demand", "prophylax
         if state_lower in ["bleeding", "joint_bleeding"]:
             cumulative_bleeds[0] += 1
         decrement_per_bleed = (
-            0.0018 * 0.45  # Decreased for tuning
+            0.0018
             if treatment == "prophylaxis"
             else 0.0003725 if treatment == "on_demand" else None
         )

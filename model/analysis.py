@@ -1,19 +1,56 @@
-from typing import List, Dict
+from typing import List, Dict, Literal, Tuple
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from statsmodels.regression.linear_model import OLSResults
 from statsmodels.robust.robust_linear_model import RLMResults
 from src.utils.logger import get_logger
 from matplotlib.lines import Line2D
+import model.constants as constants
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
+import pandas as pd
 
+# TODO:
+# Maybe removing outliers before simulating ICER
 
 logger = get_logger()
 
 
-# --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
-def plot_consumption_vs_abr(*args):
+def remove_outliers(
+    df: pd.DataFrame, endog_col: str, exog_col: str, threshold_factor=4
+) -> pd.DataFrame:
+    """
+    Helper function to remove outliers, supports pandas dataframe
+    """
+    X_constant = sm.add_constant(df[exog_col])
+    ols: OLSResults = sm.OLS(endog=df[endog_col], exog=X_constant).fit()  # type: ignore
+    cooks_d = ols.get_influence().cooks_distance[0]
+    threshold = threshold_factor / len(df)
+    mask = cooks_d <= threshold
+
+    filtered_df = df[mask]
+    # Print number of outliers removed
+    print(f"Removing {len(df) - len(filtered_df)} outliers")
+    return filtered_df
+
+
+# TODO:
+# Maybe caching? or passing to plots instead of args
+def extract(*args) -> dict[Literal["dataframes", "icer_pairs", "categorized"], List]:
+    """
+    Summary
+    -------
+    Instead of unzipping results for every plot, it provides un zipped data, even as pairs, ready to plot.
+
+    Args:
+        *args: data passed to plot functions from master plot() function, used to unwrap model inputs and outputs
+
+    Returns:
+        dict: type hinted
+    """
+
+    # Extracting arguments
     (
         on_demand_inputs,
         prophylaxis_inputs,
@@ -21,31 +58,147 @@ def plot_consumption_vs_abr(*args):
         prophylaxis_results,
         n_samples,
     ) = args
+
+    # Extract data for plotting
+    # Features | Predictors
+    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
+    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
+    on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
+    prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
+    # Outcomes | Dependent
+    on_demand_utilities = on_demand_results["QALYS"]
+    on_demand_consumptions = on_demand_results["total_factors_use"]
+    on_demand_annual_use = on_demand_results["annual_factor_consumption"]
+    on_demand_costs = on_demand_results["total_factors_costs"]
+    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+    prophylaxis_consumptions = prophylaxis_results["total_factors_use"]
+    prophylaxis_annual_use = prophylaxis_results["annual_factor_consumption"]
+    prophylaxis_utilities = prophylaxis_results["QALYS"]
+
+    # Creating Dataframe for easier handling and masking
+    on_demand_df = pd.DataFrame(
+        {
+            "abr": on_demand_abr,
+            "ajbr": on_demand_ajbr,
+            "consumption": on_demand_consumptions,
+            "annual_factor_use": on_demand_annual_use,
+            "costs": on_demand_costs,
+            "qalys": on_demand_utilities,
+        }
+    )
+    prophylaxis_df = pd.DataFrame(
+        {
+            "abr": prophylaxis_abr,
+            "ajbr": prophylaxis_ajbr,
+            "consumption": prophylaxis_consumptions,
+            "annual_factor_use": prophylaxis_annual_use,
+            "costs": prophylaxis_costs,
+            "qalys": prophylaxis_utilities,
+        }
+    )
+    # Dropping outliers using cook's distance
+    on_demand_df = remove_outliers(on_demand_df, "costs", "abr")
+    prophylaxis_df = remove_outliers(prophylaxis_df, "costs", "abr")
+
+    # Prepare (Cost, QALY, ABR) pairs
+    on_demand_pair = [
+        (row["costs"], row["qalys"], row["abr"]) for _, row in on_demand_df.iterrows()
+    ]
+    prophylaxis_pair = [
+        (row["costs"], row["qalys"], row["abr"]) for _, row in prophylaxis_df.iterrows()
+    ]
+
+    # Removes Increase in ABR ICER, Impossible transition
+    icer_pairs = [
+        (p_p[0] - o_p[0], p_p[1] - o_p[1], p_p[2] - o_p[2])
+        for o_p in on_demand_pair
+        for p_p in prophylaxis_pair
+        if not (p_p[2] - o_p[2]) > 0
+    ]
+    logger.info(
+        f"Possible transitions nodes from on_demand to prophylaxis: {len(icer_pairs)}"
+    )
+
+    # Categorize ICERs
+    dom, dmd, ce, nce, lce, icers = [], [], [], [], [], []
+
+    for dc, dq, da in icer_pairs:
+        if da > 0:
+            raise ValueError("ICER calculation with positive delta ABR is prohibited")
+        if dq < 0 and dc > 0:  # Dominated: lower effectiveness, higher cost
+            pair = (float("inf"), (dc, dq, da))  # Use inf for dominated ICERs
+            dmd.append(pair)
+            continue
+        if dq < 0 and dc < 0:  # Lower effectiveness, lower cost
+            pair = (float("inf"), (dc, dq, da))  # Use inf for ICERs
+            dmd.append(pair)
+            continue
+        if dq == 0:  # Handle zero QALYs to avoid division by zero
+            pair = (float("inf"), (dc, dq, da))
+            nce.append(pair)
+            continue
+        icer = dc / dq
+        icers.append(icer)
+        pair = (icer, (dc, dq, da))
+        if dc < 0 and dq > 0:  # Dominant: cost-saving, better outcome
+            dom.append(pair)
+        elif icer <= constants.WILLINGNESS_TO_PAY_THRESHOLD:  # Cost-effective
+            ce.append(pair)
+        else:  # Not cost-effective
+            nce.append(pair)
+    logger.info("Categorized ICERS pairs:")
+    logger.info(f"Dominant: {len(dom)} with portion: {(len(dom)/len(icer_pairs)):.2f}%")
+    logger.info(
+        f"Dominated: {len(dmd)} with portion: {(len(dmd)/len(icer_pairs)):.2f}%"
+    )
+    logger.info(
+        f"Lower cost with lower effectiveness: {len(lce)}, portion: {(len(lce)/len(icer_pairs)):.4f}%"
+    )
+    logger.info(
+        f"Cost-effective: {len(ce)} with portion: {(len(ce)/len(icer_pairs)):.2f}%"
+    )
+    logger.info(
+        f"Not Cost-effective: {len(nce)} with portion: {(len(nce)/len(icer_pairs)):.2f}%"
+    )
+    try:
+        assert np.isclose(
+            len(icer_pairs),
+            len(dom) + len(dmd) + len(ce) + len(nce),
+        )
+        logger.info("Categorization asserted")
+    except AssertionError:
+        logger.warning("Data lost during categorization")
+
+    output = {
+        "dataframes": [on_demand_df, prophylaxis_df],
+        "icer_pairs": icer_pairs,
+        "categorized": [dom, dmd, ce, nce, icers],
+    }
+    return output  # type: ignore
+
+
+# --- Plot 1: Scatter plot (Factor Consumption vs. ABR) ---
+def plot_consumption_vs_abr(*args):
+
+    data_dict = extract(*args)
+    on_demand_df, prophylaxis_df = data_dict["dataframes"]
     scatter_fig = plt.figure(figsize=(12, 8))
     scatter_ax: Axes = scatter_fig.add_subplot(1, 1, 1)
 
-    # Extract data for plotting
-    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
-    on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
-    on_demand_factors = on_demand_results["total_factors_use"]
-    prophylaxis_factors = prophylaxis_results["total_factors_use"]
-    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
-    prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
-
     # Scatter plot for factor consumption
     scatter1 = scatter_ax.scatter(
-        on_demand_abr,
-        on_demand_factors,
-        c=on_demand_ajbr,
+        on_demand_df["abr"],
+        on_demand_df["consumption"],
+        c=on_demand_df["ajbr"],
         cmap="viridis",
         label="On-Demand",
         alpha=0.6,
         s=50,
     )
     scatter2 = scatter_ax.scatter(
-        prophylaxis_abr,
-        prophylaxis_factors,
-        c=prophylaxis_ajbr,
+        prophylaxis_df["abr"],
+        prophylaxis_df["consumption"],
+        c=prophylaxis_df["ajbr"],
         cmap="plasma",
         label="Prophylaxis",
         marker="^",
@@ -54,25 +207,25 @@ def plot_consumption_vs_abr(*args):
     )
 
     # Robust regression for On-Demand (factor consumption)
-    X_od = sm.add_constant(on_demand_abr)
-    rlm_od = sm.RLM(on_demand_factors, X_od, M=sm.robust.norms.HuberT())
+    X_od = sm.add_constant(on_demand_df["abr"])
+    rlm_od = sm.RLM(on_demand_df["consumption"], X_od, M=sm.robust.norms.HuberT())
     od_rlm_results: RLMResults = rlm_od.fit()  # type: ignore
     scatter_ax.plot(
-        on_demand_abr,
+        on_demand_df["abr"],
         od_rlm_results.predict(X_od),
         "b--",
-        label=f"On-Demand (robust): slope={od_rlm_results.params[1]:.2f}",
+        label=f"On-Demand (robust): slope={od_rlm_results.params.iloc[1]:.2f}",
     )
 
     # Robust regression for Prophylaxis (factor consumption)
-    X_pro = sm.add_constant(prophylaxis_abr)
-    rlm_pro = sm.RLM(prophylaxis_factors, X_pro, M=sm.robust.norms.HuberT())
+    X_pro = sm.add_constant(prophylaxis_df["abr"])
+    rlm_pro = sm.RLM(prophylaxis_df["consumption"], X_pro, M=sm.robust.norms.HuberT())
     prophylaxis_rlm_results: RLMResults = rlm_pro.fit()  # type: ignore
     scatter_ax.plot(
-        prophylaxis_abr,
+        prophylaxis_df["abr"],
         prophylaxis_rlm_results.predict(X_pro),
         "r--",
-        label=f"Prophylaxis (robust): slope={prophylaxis_rlm_results.params[1]:.2f}",
+        label=f"Prophylaxis (robust): slope={prophylaxis_rlm_results.params.iloc[1]:.2f}",
     )
 
     scatter_ax.set_xlabel("Annual Bleeding Rate (ABR)")
@@ -82,6 +235,7 @@ def plot_consumption_vs_abr(*args):
     scatter_ax.grid(True, alpha=0.3)
     scatter_fig.colorbar(scatter1, ax=scatter_ax, label="AJBR (On-Demand)")
 
+    logger.info("Factor consumption over ABR plotted")
     return scatter_fig
 
 
@@ -122,73 +276,69 @@ def plot_consumption_hist(*args):
     return hist_fig
 
 
+# Working on
 # --- Plot 3: Scatter plot (Costs vs. ABR) ---
 def plot_costs_vs_abr(*args):
-    (
-        on_demand_inputs,
-        prophylaxis_inputs,
-        on_demand_results,
-        prophylaxis_results,
-        n_samples,
-    ) = args
+    data_dict = extract(*args)
 
-    # Extract data for plotting
-    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
-    on_demand_ajbr = [inp["ajbr"] for inp in on_demand_inputs]
-    on_demand_costs = on_demand_results["total_factors_costs"]
-    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
-    prophylaxis_ajbr = [inp["ajbr"] for inp in prophylaxis_inputs]
-    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
+    # load as dataframe for easier handling and masking
+    on_demand_df, prophylaxis_df = data_dict["dataframes"]
 
+    # Create figure and axis
     cost_fig = plt.figure(figsize=(12, 8))
     cost_ax: Axes = cost_fig.add_subplot(1, 1, 1)
 
-    # Scatter plot for costs
+    # Scatter plot for filtered data
     cost_scatter1 = cost_ax.scatter(
-        on_demand_abr,
-        on_demand_costs,
-        c=on_demand_ajbr,
+        x=on_demand_df["abr"],
+        y=on_demand_df["costs"],
+        c=on_demand_df["ajbr"],
         cmap="viridis",
-        label="On-Demand",
+        label="On-Demand (Filtered)",
         alpha=0.6,
         s=50,
     )
     cost_scatter2 = cost_ax.scatter(
-        prophylaxis_abr,
-        prophylaxis_costs,
-        c=prophylaxis_ajbr,
+        x=prophylaxis_df["abr"],
+        y=prophylaxis_df["costs"],
+        c=prophylaxis_df["ajbr"],
         cmap="plasma",
-        label="Prophylaxis",
+        label="Prophylaxis (Filtered)",
         marker="^",
         alpha=0.6,
         s=50,
     )
 
-    # Robust regression for On-Demand (costs)
-    X_od_cost = sm.add_constant(on_demand_abr)
-    rlm_od_cost = sm.RLM(on_demand_costs, X_od_cost, M=sm.robust.norms.HuberT())
+    # Robust regression for filtered On-Demand
+    X_od_filtered = sm.add_constant(on_demand_df["abr"])
+    rlm_od_cost = sm.RLM(
+        on_demand_df["costs"], X_od_filtered, M=sm.robust.norms.HuberT()
+    )
     od_rlm_cost_results: RLMResults = rlm_od_cost.fit()  # type: ignore
     cost_ax.plot(
-        on_demand_abr,
-        od_rlm_cost_results.predict(X_od_cost),
+        on_demand_df["abr"],
+        od_rlm_cost_results.predict(X_od_filtered),
         "b--",
-        label=f"On-Demand (robust): slope={od_rlm_cost_results.params[1]:.2f}",
+        label=f"On-Demand (robust): slope={od_rlm_cost_results.params.iloc[1]:.2f}",
     )
 
-    # Robust regression for Prophylaxis (costs)
-    X_pro_cost = sm.add_constant(prophylaxis_abr)
-    rlm_pro_cost = sm.RLM(prophylaxis_costs, X_pro_cost, M=sm.robust.norms.HuberT())
+    # Robust regression for filtered Prophylaxis
+    X_pro_filtered = sm.add_constant(prophylaxis_df["abr"])
+    rlm_pro_cost = sm.RLM(
+        prophylaxis_df["costs"], X_pro_filtered, M=sm.robust.norms.HuberT()
+    )
     pro_rlm_cost_results: RLMResults = rlm_pro_cost.fit()  # type: ignore
     cost_ax.plot(
-        prophylaxis_abr,
-        pro_rlm_cost_results.predict(X_pro_cost),
+        prophylaxis_df["abr"],
+        pro_rlm_cost_results.predict(X_pro_filtered),
         "r--",
-        label=f"Prophylaxis (robust): slope={pro_rlm_cost_results.params[1]:.2f}",
+        label=f"Prophylaxis (robust): slope={pro_rlm_cost_results.params.iloc[1]:.2f}",
     )
 
+    # Axis labels and styling
     cost_ax.set_xlabel("Annual Bleeding Rate (ABR)")
     cost_ax.set_ylabel("Mean Annual Factor Cost (USD)")
-    cost_ax.set_title("Factor Costs vs. ABR")
+    cost_ax.set_title("Factor Costs vs. ABR (Outliers Removed via Cook’s Distance)")
     cost_ax.legend()
     cost_ax.grid(True, alpha=0.3)
     cost_fig.colorbar(cost_scatter1, ax=cost_ax, label="AJBR (On-Demand)")
@@ -248,92 +398,12 @@ def plot_qaly_vs_abr(*args):
     return utility_fig
 
 
-# Utility to plot ICERs plots
-WTP = 20_000
-
-
-def prepare_icer(*args):
-    (
-        on_demand_inputs,
-        prophylaxis_inputs,
-        on_demand_results,
-        prophylaxis_results,
-        n_samples,
-    ) = args
-    # Extract data for plotting
-    on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
-    prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
-    on_demand_costs = on_demand_results["total_factors_costs"]
-    prophylaxis_costs = prophylaxis_results["total_factors_costs"]
-    on_demand_utilities = on_demand_results["QALYS"]
-    prophylaxis_utilities = prophylaxis_results["QALYS"]
-
-    # Prepare (Cost, QALY, ABR) pairs
-    on_demand_pair = [
-        (on_demand_costs[i], q, on_demand_abr[i])
-        for i, q in enumerate(on_demand_utilities)
-    ]
-    prophylaxis_pair = [
-        (prophylaxis_costs[i], q, prophylaxis_abr[i])
-        for i, q in enumerate(prophylaxis_utilities)
-    ]
-
-    # Removes Increase in ABR ICER, Impossible transition
-    icer_pairs = [
-        (pp[0] - op[0], pp[1] - op[1], pp[2] - op[2])
-        for op in on_demand_pair
-        for pp in prophylaxis_pair
-        if not (pp[2] - op[2]) > 0
-    ]
-
-    # Categorize ICERs
-    wtp = 20_000
-    dominant, dominated, cost_eff, not_cost_eff, icers = [], [], [], [], []
-
-    for dc, dq, da in icer_pairs:
-        if da > 0:
-            logger.error("ICER calculation with positive delta ABR is prohibited")
-        if dq < 0:  # Dominated: worse outcome, higher cost
-            pair = (float("inf"), (dc, dq, da))  # Use inf for dominated ICERs
-            dominated.append(pair)
-            continue
-        if dq == 0:  # Handle zero QALYs to avoid division by zero
-            pair = (float("inf"), (dc, dq, da))
-            not_cost_eff.append(pair)
-            continue
-        icer = dc / dq
-        icers.append(icer)
-        pair = (icer, (dc, dq, da))
-        if dc < 0 and dq > 0:  # Dominant: cost-saving, better outcome
-            dominant.append(pair)
-        elif icer <= wtp:  # Cost-effective
-            cost_eff.append(pair)
-        else:  # Not cost-effective
-            not_cost_eff.append(pair)
-    logger.info("Categorized ICERS pairs:")
-    logger.info(f"Dominant: {len(dominant)}, Dominated: {len(dominated)}")
-    logger.info(
-        f"Cost-effective: {len(not_cost_eff)}, Not Cost-effective: {len(cost_eff)}"
-    )
-    try:
-        assert np.isclose(
-            len(icer_pairs),
-            len(dominant) + len(dominated) + len(cost_eff) + len(not_cost_eff),
-        )
-        logger.info("Categorization asserted")
-    except AssertionError:
-        logger.warning("Data lost during categorization")
-    return icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers)
-
-
-# --- Plot 4: Scatter plot (Costs vs. QALYs) ---
+# --- Plot 5: Scatter plot (Costs vs. QALYs) ---
 def plot_icer_scatter(*args):
     icer_fig = plt.figure(figsize=(20, 10))
     icer_ax = icer_fig.add_subplot(1, 1, 1)
 
-    icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers) = prepare_icer(
-        *args
-    )
+    icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers) = extract(*args)
 
     # Summary
     delta_costs, delta_qalys, delta_abr = (
@@ -418,7 +488,13 @@ def plot_icer_scatter(*args):
 
     # Axes, lines
     x_rng = np.array([min(delta_qalys or [0]) - 0.1, max(delta_qalys or [0]) + 0.1])
-    icer_ax.plot(x_rng, x_rng * WTP, "k--", alpha=0.8, label=f"WTP: ${WTP:,}/QALY")
+    icer_ax.plot(
+        x_rng,
+        x_rng * constants.WILLINGNESS_TO_PAY_THRESHOLD,
+        "k--",
+        alpha=0.8,
+        label=f"WTP: ${constants.WILLINGNESS_TO_PAY_THRESHOLD:,}/QALY",
+    )
     icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.set(
@@ -478,7 +554,11 @@ def plot_icer_scatter(*args):
             markersize=15,
         ),
         Line2D(
-            [0], [0], linestyle="--", color="black", label=f"WTP: ${WTP:,}/QALY"
+            [0],
+            [0],
+            linestyle="--",
+            color="black",
+            label=f"WTP: ${constants.WILLINGNESS_TO_PAY_THRESHOLD:,}/QALY",
         ),  # WTP line
     ]
 
@@ -487,66 +567,7 @@ def plot_icer_scatter(*args):
 
 
 def plot_icer_histogram(*args):
-    icer_fig = plt.figure(figsize=(12, 8))
-    gs = icer_fig.add_gridspec(1, 2)
-
-    icer_pairs, (dominant, dominated, cost_eff, not_cost_eff, icers) = prepare_icer(
-        *args
-    )
-
-    dmd_ax = icer_fig.add_subplot(gs[0])
-    # TODO:
-    # Dominated histogram ABR distribution here
-
-    # --- Histogram of ICERs ---
-    hist_ax = icer_fig.add_subplot(gs[1])
-
-    hist_groups = [
-        ([icer for icer, _ in dominant], "green", "Dominant"),
-        ([icer for icer, _ in cost_eff], "blue", "Cost-Effective"),
-        ([icer for icer, _ in not_cost_eff], "red", "Not Cost-Effective"),
-        # Exclude dominated from histogram since ICERs are undefined (inf)
-    ]
-
-    for icers_list, color, label in hist_groups:
-        if icers_list:  # Only plot if list is not empty
-            hist_ax.hist(
-                icers_list,
-                bins=20,
-                range=(-50000, 50000),
-                color=color,
-                alpha=0.4,
-                label=label,
-            )
-
-    # Add frequency of dominated points as text annotation
-    hist_ax.text(
-        0.05,
-        0.5,  # Left center: 5% from left, 50% from bottom
-        f"Dominated: {len(dominated)} points (ICER undefined)",
-        transform=hist_ax.transAxes,
-        fontsize=9,
-        verticalalignment="center",
-        horizontalalignment="left",
-        rotation="vertical",
-        bbox=dict(boxstyle="round,pad=0.5", edgecolor="black", facecolor="white"),
-    )
-
-    # Add WTP line
-    hist_ax.axvline(
-        WTP,
-        color="black",
-        linestyle="--",
-        linewidth=1.2,
-        label=f"WTP: ${WTP:,}/QALY",
-    )
-
-    hist_ax.set_xlabel("ICER ($/QALY)")
-    hist_ax.set_ylabel("Frequency")
-    hist_ax.set_title("ICER Distribution")
-    hist_ax.grid(True, linestyle="--", alpha=0.7, axis="x")
-    hist_ax.legend(loc="upper left")
-    return icer_fig
+    pass
 
 
 # Plot all results
@@ -558,13 +579,14 @@ def plot(
     n_samples: int,
 ) -> dict[str, Figure]:
     figures = {}
+    # Key for plot name
     plot_functions = {
-        "factor_consumption": plot_consumption_vs_abr,
+        "factor_consumptions": plot_consumption_vs_abr,
         "factor_histogram": plot_consumption_hist,
-        "costs_vs_abr": plot_costs_vs_abr,
-        "qalys_vs_abr": plot_qaly_vs_abr,
-        "costs_vs_qalys": plot_icer_scatter,
-        "icer_histogram": plot_icer_histogram,
+        "costs_per_abr": plot_costs_vs_abr,
+        "qalys_per_abr": plot_qaly_vs_abr,
+        # "incremental_cost_effectiveness": plot_icer_scatter,
+        # "icer_histogram": plot_icer_histogram,
     }
     for key, func in plot_functions.items():
         fig = func(
@@ -574,5 +596,8 @@ def plot(
             prophylaxis_results,
             n_samples,
         )
+        if not fig:
+            logger.warning(f"Function: {func.__name__} returns None type")
+            continue
         figures[key] = fig
     return figures

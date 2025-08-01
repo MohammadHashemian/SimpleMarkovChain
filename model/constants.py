@@ -10,3 +10,4 @@ HIGH_DOSE_PROPHYLAXIS_WEEKLY_DOSE = 30 * 3  # IR Protocol
 BLEEDING_DOSE = 30 * 4  #  Guideline average
 JOINT_BLEEDING_DOSE = 30 * 2  #  Guideline average
 LT_BLEEDING_DOSE = 550  #  Guideline average
+WILLINGNESS_TO_PAY_THRESHOLD = 20_000 # USD, PPP
