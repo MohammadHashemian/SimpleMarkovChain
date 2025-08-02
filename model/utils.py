@@ -3,6 +3,9 @@ from pathlib import Path
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.regression.linear_model import OLSResults
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,3 +103,21 @@ def plot_body_weight():
 # Call the plot function
 if __name__ == "__main__":
     plot_body_weight()
+
+
+def remove_outliers(
+    df: pd.DataFrame, endog_col: str, exog_col: str, threshold_factor=4
+) -> pd.DataFrame:
+    """
+    Helper function to remove outliers, supports pandas dataframe
+    """
+    X_constant = sm.add_constant(df[exog_col])
+    ols: OLSResults = sm.OLS(endog=df[endog_col], exog=X_constant).fit()  # type: ignore
+    cooks_d = ols.get_influence().cooks_distance[0]
+    threshold = threshold_factor / len(df)
+    mask = cooks_d <= threshold
+
+    filtered_df = df[mask]
+    # Print number of outliers removed
+    print(f"Removing {len(df) - len(filtered_df)} outliers")
+    return filtered_df
