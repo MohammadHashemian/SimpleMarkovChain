@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
 import pandas as pd
+import math
 
 # Assuming these are defined elsewhere
 from model.utils import remove_outliers
@@ -375,7 +376,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
         zip(*icer_pairs) if icer_pairs else ([], [], [])
     )
     logger.info(
-        f"Max reduction in weeks spent with bleeding: {np.max(delta_abr) if delta_abr else 'N/A'} weeks"
+        f"Max reduction in weeks spent with bleeding: {np.max([abs(da) for da in delta_abr]) if delta_abr else 'N/A'} weeks"
     )
     logger.info(
         f"Dominant: {len(dominant)}, Cost-effective: {len(cost_eff)}, Not cost-effective: {len(not_cost_eff)}, Dominated: {len(dominated)}"
@@ -417,7 +418,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
             color=color,
             marker=marker,
             alpha=0.6,
-            s=100,  # Increased size for visibility
+            s=1,
             label=label,
         )
 
@@ -530,39 +531,60 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     return icer_fig
 
 
-def plot_icer_histogram(data: DataExtract) -> Figure:
-    """
-    Plot histogram of ICER values (excluding infinite values).
-    """
-    _, _, _, _, icers = data.categorized
-    hist_fig = plt.figure(figsize=(10, 8))
-    hist_ax: Axes = hist_fig.add_subplot(1, 1, 1)
+def plot_icer_histogram(data: DataExtract):
+    points = data.icer_pairs  # (dc, dq, da)
+    dc = np.array([pair[0] for pair in points])  # Costs
+    dq = np.array([pair[1] for pair in points])  # QALYs
 
-    # Filter out infinite ICERs
-    valid_icers = [icer for icer in icers if np.isfinite(icer)]
-    if not valid_icers:
-        logger.warning("No valid ICERs for histogram")
-        hist_ax.text(0.5, 0.5, "No valid ICERs to plot", ha="center", va="center")
-        hist_ax.set_xlabel("ICER ($/QALY)")
-        hist_ax.set_ylabel("Frequency")
-        hist_ax.set_title("Distribution of ICERs")
-        return hist_fig
+    # Define ranges with small buffer
+    costs_range = (np.min(dc), np.max(dc))
+    qalys_range = (np.min(dq), np.max(dq))
+    if np.min(dc) == np.max(dc):
+        costs_range = (np.min(dc) - 0.1, np.max(dc) + 0.1)
+    if np.min(dq) == np.max(dq):
+        qalys_range = (np.min(dq) - 0.1, np.max(dq) + 0.1)
 
-    bins = min(30, max(10, len(valid_icers) // 5))  # Adaptive bins
-    hist_ax.hist(
-        valid_icers,
-        bins=bins,
-        alpha=0.7,
-        color="blue",
-        label="ICERs",
+    fig = plt.figure(figsize=(12, 8))
+    gs = fig.add_gridspec(2, 2, height_ratios=[4, 1], width_ratios=[1, 3])
+    ax_2d = fig.add_subplot(gs[0, 1])  # 2D histogram in top-right
+    ax_costs = fig.add_subplot(gs[0, 0], sharey=ax_2d)  # Costs histogram on left
+    ax_qalys = fig.add_subplot(gs[1, 1], sharex=ax_2d)  # QALYs histogram below ax_2d
+
+    # Plot 2D histogram and get bin edges
+    hist2d = ax_2d.hist2d(
+        x=dq,
+        y=dc,
+        bins=50,
+        cmap="viridis",
+        range=[qalys_range, costs_range],
     )
-    hist_ax.set_xlabel("ICER ($/QALY)")
-    hist_ax.set_ylabel("Frequency")
-    hist_ax.set_title("Distribution of ICERs")
-    hist_ax.legend()
-    hist_ax.grid(True, alpha=0.3)
-    logger.info("ICER histogram plotted")
-    return hist_fig
+
+    # Use y-axis bin edges from 2D histogram
+    ax_costs.hist(
+        dc,
+        bins=hist2d[2],  # type: ignore
+        range=costs_range,
+        orientation="horizontal",
+        color="gray",
+        edgecolor="black",
+    )
+    # Use x-axis bin edges from 2D histogram
+    ax_qalys.hist(
+        dq,
+        bins=hist2d[1],  # type: ignore
+        range=qalys_range,
+        color="gray",
+        edgecolor="black",
+    )
+
+    ax_2d.set_xlabel("QALYs")
+    ax_2d.set_ylabel("Costs")
+    ax_costs.set_xlabel("Count")
+    ax_costs.set_ylabel("Costs")
+    ax_qalys.set_xlabel("QALYs")
+    ax_qalys.set_ylabel("Count")
+
+    return fig
 
 
 def plot(

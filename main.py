@@ -59,18 +59,32 @@ async def process(execute: bool):
         return False
 
 
+# TODO:
+# Cache Markov chain results for faster execution
 @app.command(help="Runs new markov model simulation.")
 def markov(
     n_samples: int = typer.Option(64, "--n-samples", help="Number of samples for PSA."),
+    cache: bool = typer.Option(
+        False,
+        "--cache",
+        help="Loads markov model cached results if exists, otherwise write the cache file for future use.",
+    ),
     plot: bool = typer.Option(False, "--plot", help="Generate the plots of results."),
 ):
     num_steps = model.constants.NUM_CYCLES
-    # np.random.seed(42)  # For reproducibility
+    np.random.seed(42)  # For reproducibility
 
     # Validate n_samples
     if n_samples <= 0:
         typer.echo("Error: n_samples must be a positive integer.")
         raise typer.Exit(code=1)
+
+    if cache:
+        typer.echo("Loading cached data ...")
+        # TODO: Logic here
+    else:
+        typer.echo("Starting markov model simulation ...")
+        # TODO: Logic here
 
     # On_Demand
     initial_state, states, on_demand_transition = model.markov.load_transition_matrix(
@@ -94,7 +108,7 @@ def markov(
     typer.echo(
         f"Mean annual factor discounted costs: {np.mean(on_demand_results['total_factors_costs']):.0f}$, PPP"
     )
-    typer.echo(f"Mean discounted QALYS {np.mean(on_demand_results['QALYS']):.0f}")
+    typer.echo(f"Mean discounted QALYS {np.mean(on_demand_results['QALYS']):.2f}")
 
     # Prophylaxis
     new = time()

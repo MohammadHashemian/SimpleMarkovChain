@@ -1,21 +1,19 @@
 DEBUG: Set display.max_colwidth to None
 DEBUG: Suppressing matplotlib font manager logger
-INFO: Possible transitions from on-demand to prophylaxis: 90203
+INFO: Possible transitions from on-demand to prophylaxis: 22811061
 INFO: Categorized ICER pairs:
-INFO: Dominant: 4052 (4.49%)
-INFO: Dominated: 14757 (16.36%)
-INFO: Lower cost, lower effectiveness: 0 (0.00%)
-INFO: Cost-effective: 58335 (64.67%)
-INFO: Not cost-effective: 13059 (14.48%)
+INFO: Dominant: 962357 (4.22%)
+INFO: Dominated: 4229573 (18.54%)
+INFO: Lower cost, lower effectiveness: 41101 (0.18%)
+INFO: Cost-effective: 14535167 (63.72%)
+INFO: Not cost-effective: 3042863 (13.34%)
 INFO: Factor consumption vs. ABR plotted
 INFO: Factor consumption histogram plotted
 INFO: Costs vs. ABR plotted
 INFO: QALYs vs. ABR plotted
-INFO: Max reduction in weeks spent with bleeding: 0.0 weeks
-INFO: Dominant: 4052, Cost-effective: 58335, Not cost-effective: 13059, Dominated: 14757
-INFO: Median ICER (dominant): $-242.58/QALY
-INFO: Median ICER (cost-effective): $3,627.25/QALY
-INFO: Median ICER (not cost-effective): $41,758.53/QALY
-INFO: Median ICER: $7,805/QALY, Median ΔABR: -14.00
-INFO: ICER scatter plotted
-INFO: ICER histogram plotted
+INFO: Max reduction in weeks spent with bleeding: 44.0 weeks
+INFO: Dominant: 962357, Cost-effective: 14535167, Not cost-effective: 3042863, Dominated: 4229573
+INFO: Median ICER (dominant): $-262.06/QALY
+INFO: Median ICER (cost-effective): $3,574.52/QALY
+INFO: Median ICER (not cost-effective): $42,238.72/QALY
+INFO: Median ICER: $7,893/QALY, Median ΔABR: -14.00
