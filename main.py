@@ -1,3 +1,4 @@
+from cache import ensure_cache_dir, load_cache, save_cache
 from src.utils.logger import get_logger, suppress_matplotlib_debug
 from src.data.scarper import fetch_irc_factors
 from src.data.loaders import (
@@ -7,7 +8,6 @@ from src.data.loaders import (
     load_irc_data,
 )
 from src.processing.distribution_adjuster import adjust_age_distribution
-from model_dep import simulation
 from pathlib import Path
 from time import time
 import model.markov
@@ -59,17 +59,20 @@ async def process(execute: bool):
         return False
 
 
-# TODO:
-# Cache Markov chain results for faster execution
-@app.command(help="Runs new markov model simulation.")
+@app.command(help="Runs new Markov model simulation.")
 def markov(
     n_samples: int = typer.Option(64, "--n-samples", help="Number of samples for PSA."),
     cache: bool = typer.Option(
         False,
         "--cache",
-        help="Loads markov model cached results if exists, otherwise write the cache file for future use.",
+        help="Use cached results if available, otherwise cache new results.",
     ),
-    plot: bool = typer.Option(False, "--plot", help="Generate the plots of results."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force recomputation even if cache exists.",
+    ),
+    plot: bool = typer.Option(False, "--plot", help="Generate plots of results."),
 ):
     num_steps = model.constants.NUM_CYCLES
     np.random.seed(42)  # For reproducibility
@@ -79,44 +82,93 @@ def markov(
         typer.echo("Error: n_samples must be a positive integer.")
         raise typer.Exit(code=1)
 
-    if cache:
-        typer.echo("Loading cached data ...")
-        # TODO: Logic here
-    else:
-        typer.echo("Starting markov model simulation ...")
-        # TODO: Logic here
+    # Ensure cache directory exists
+    cache_dir = ensure_cache_dir()
+    on_demand_cache_path = cache_dir / "on_demand.pkl"
+    prophylaxis_cache_path = cache_dir / "prophylaxis.pkl"
 
-    # On_Demand
+    # Load transition matrix
     initial_state, states, on_demand_transition = model.markov.load_transition_matrix(
         io=PROJECT_ROOT / "data" / "Transitions.xlsx",
         sheet_name="on_demand",
     )
-    new = time()
-    on_demand_inputs, on_demand_results = model.markov.on_demand_psa(
-        states=states, start_state=initial_state, steps=num_steps, n_samples=n_samples
+
+    def run_simulation(
+        sim_func,
+        cache_path: Path,
+        states,
+        start_state,
+        steps: int,
+        n_samples: int,
+        use_cache: bool,
+        force_recompute: bool,
+        sim_name: str,
+    ):
+        """Run or load simulation results with caching."""
+        start_time = time()
+
+        if use_cache and not force_recompute and cache_path.exists():
+            cache_data = load_cache(cache_path, n_samples, steps)
+            if cache_data:
+                inputs, results = cache_data
+                typer.echo(
+                    f"{sim_name} loaded from cache in {(time() - start_time):.0f} seconds."
+                )
+                return inputs, results
+
+        # Run simulation if no cache or force recompute
+        inputs, results = sim_func(
+            states=states, start_state=start_state, steps=steps, n_samples=n_samples
+        )
+        if use_cache:
+            save_cache(cache_path, inputs, results, n_samples, steps)
+
+        typer.echo(
+            f"{sim_name} simulation completed in {(time() - start_time):.0f} seconds."
+        )
+        return inputs, results
+
+    # Run On-Demand simulation
+    on_demand_inputs, on_demand_results = run_simulation(
+        sim_func=model.markov.on_demand_psa,
+        cache_path=on_demand_cache_path,
+        states=states,
+        start_state=initial_state,
+        steps=num_steps,
+        n_samples=n_samples,
+        use_cache=cache,
+        force_recompute=force,
+        sim_name="On-Demand",
     )
-    exc = time()
-    typer.echo(f"On_Demand Simulation completed in {(exc - new):.0f} seconds.")
+
+    # Output On-Demand results
     typer.echo(f"Number of samples: {len(on_demand_inputs)}")
     typer.echo(f"Sample input example: {on_demand_inputs[0]}")
     typer.echo(
-        f"Mean total factor use: {np.mean(on_demand_results['total_factors_use']):.0f}"
+        f"Median total factor use: {np.median(on_demand_results['total_factors_use']):.0f}"
     )
     typer.echo(
-        f"Mean annual factor consumption: {np.mean(on_demand_results['annual_factor_consumption']):.0f}"
+        f"Median annual factor consumption: {np.median(on_demand_results['annual_factor_consumption']):.0f}"
     )
     typer.echo(
-        f"Mean annual factor discounted costs: {np.mean(on_demand_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor discounted costs: {np.median(on_demand_results['total_factors_costs']):.0f}$, PPP"
     )
-    typer.echo(f"Mean discounted QALYS {np.mean(on_demand_results['QALYS']):.2f}")
+    typer.echo(f"Median discounted QALYS: {np.median(on_demand_results['QALYS']):.2f}")
 
-    # Prophylaxis
-    new = time()
-    prophylaxis_inputs, prophylaxis_results = model.markov.prophylaxis_psa(
-        states=states, start_state=initial_state, steps=num_steps, n_samples=n_samples
+    # Run Prophylaxis simulation
+    prophylaxis_inputs, prophylaxis_results = run_simulation(
+        sim_func=model.markov.prophylaxis_psa,
+        cache_path=prophylaxis_cache_path,
+        states=states,
+        start_state=initial_state,
+        steps=num_steps,
+        n_samples=n_samples,
+        use_cache=cache,
+        force_recompute=force,
+        sim_name="Prophylaxis",
     )
-    exc = time()
-    typer.echo(f"Prophylaxis Simulation completed in {(exc - new):.0f} seconds.")
+
+    # Output Prophylaxis results
     typer.echo(f"Number of samples: {len(prophylaxis_inputs)}")
     typer.echo(f"Sample input example: {prophylaxis_inputs[0]}")
     typer.echo(
@@ -132,6 +184,7 @@ def markov(
         f"Median discounted QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"
     )
 
+    # Generate and save plots
     if plot:
         suppress_matplotlib_debug()
         plots = model.analysis.plot(
@@ -141,14 +194,13 @@ def markov(
             prophylaxis_results,
             n_samples=n_samples,
         )
-        # Save plot
         save_dir = PROJECT_ROOT / "outputs" / "figures"
         save_dir.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
         for name, fig in plots.items():
             if not fig:
                 raise TypeError(
-                    f"Figure name {name}, is not defined, returned type: {type(fig)}"
+                    f"Figure name {name} is not defined, returned type: {type(fig)}"
                 )
             fig.savefig(save_dir / f"{name}.png", dpi=300, bbox_inches="tight")
             plt.close(fig)
