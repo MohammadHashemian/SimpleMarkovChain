@@ -4,7 +4,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from statsmodels.robust.robust_linear_model import RLMResults
-from model.utils import remove_outliers
+from model.utils import remove_outliers_robust
 from src.utils.logger import get_logger
 import model.constants as constants
 import matplotlib.pyplot as plt
@@ -86,8 +86,12 @@ def extract(
         }
     )
     # Remove outliers
-    on_demand_df = remove_outliers(on_demand_df, "costs", "abr", threshold_factor=2)
-    prophylaxis_df = remove_outliers(prophylaxis_df, "costs", "abr", threshold_factor=2)
+    on_demand_df = remove_outliers_robust(
+        on_demand_df, "costs", "abr", threshold_factor=4
+    )
+    prophylaxis_df = remove_outliers_robust(
+        prophylaxis_df, "costs", "abr", threshold_factor=4
+    )
 
     # Prepare (Cost, QALY, ABR) pairs
     on_demand_pair = [
@@ -193,8 +197,8 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
         c=on_demand_df["ajbr"],
         cmap="viridis",
         label="On-Demand",
-        alpha=0.6,
-        s=50,
+        alpha=0.4,
+        s=25,
     )
     scatter2 = scatter_ax.scatter(
         prophylaxis_df["abr"],
@@ -203,8 +207,8 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
         cmap="plasma",
         label="Prophylaxis",
         marker="^",
-        alpha=0.6,
-        s=50,
+        alpha=0.4,
+        s=25,
     )
 
     # Robust regression for On-Demand
@@ -290,8 +294,8 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
         c=on_demand_df["ajbr"],
         cmap="viridis",
         label="On-Demand (Filtered)",
-        alpha=0.6,
-        s=50,
+        alpha=0.4,
+        s=25,
     )
     cost_scatter2 = cost_ax.scatter(
         prophylaxis_df["abr"],
@@ -300,8 +304,8 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
         cmap="plasma",
         label="Prophylaxis (Filtered)",
         marker="^",
-        alpha=0.6,
-        s=50,
+        alpha=0.4,
+        s=25,
     )
 
     # Robust regression for On-Demand
@@ -351,8 +355,8 @@ def plot_qaly_vs_abr(data: DataExtract) -> Figure:
         label="On-Demand",
         c=on_demand_df["qalys"],
         cmap="viridis_r",
-        alpha=0.6,
-        s=50,
+        alpha=0.4,
+        s=25,
     )
     scatter2 = utility_ax.scatter(
         prophylaxis_df["abr"],
@@ -362,7 +366,7 @@ def plot_qaly_vs_abr(data: DataExtract) -> Figure:
         cmap="plasma",
         marker="^",
         alpha=0.6,
-        s=50,
+        s=25,
     )
 
     utility_ax.set_xlabel("Annual Bleeding Rate (ABR)")
