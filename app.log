@@ -1,3 +1,20 @@
 DEBUG: Set display.max_colwidth to None
 DEBUG: Suppressing matplotlib font manager logger
-INFO: Possible transitions from on-demand to prophylaxis: 22871100
+INFO: Possible transitions from on-demand to prophylaxis truncated to: 1000000 pairs
+INFO: Categorized ICER pairs:
+INFO: Dominant: 45080 (4.51%)
+INFO: Dominated: 180901 (18.09%)
+INFO: Lower cost, lower effectiveness: 1519 (0.15%)
+INFO: Cost-effective: 637088 (63.71%)
+INFO: Not cost-effective: 135412 (13.54%)
+INFO: Factor consumption vs. ABR plotted
+INFO: Factor consumption histogram plotted
+INFO: Costs vs. ABR plotted
+INFO: QALYs vs. ABR plotted
+INFO: Max reduction in weeks spent with bleeding: 44.0 weeks
+INFO: Dominant: 45080, Cost-effective: 637088, Not cost-effective: 135412, Dominated: 180901
+INFO: Median ICER (dominant): $-265.43/QALY
+INFO: Median ICER (cost-effective): $3,623.26/QALY
+INFO: Median ICER (not cost-effective): $42,099.23/QALY
+INFO: Median ICER: $7,881/QALY, Median ΔABR: -14.00
+INFO: ICER scatter plotted
