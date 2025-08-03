@@ -4,16 +4,13 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from statsmodels.robust.robust_linear_model import RLMResults
+from model.utils import remove_outliers
+from src.utils.logger import get_logger
+import model.constants as constants
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
 import pandas as pd
-import math
-
-# Assuming these are defined elsewhere
-from model.utils import remove_outliers
-from src.utils.logger import get_logger
-import model.constants as constants
 
 logger = get_logger()
 
@@ -548,7 +545,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     return icer_fig
 
 
-def plot_icer_histogram(data: DataExtract):
+def plot_icer_histogram(data: DataExtract) -> Figure:
     points = data.icer_pairs  # (dc, dq, da)
     dc = np.array([pair[0] for pair in points])  # Costs
     dq = np.array([pair[1] for pair in points])  # QALYs
