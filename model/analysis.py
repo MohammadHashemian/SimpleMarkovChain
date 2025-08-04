@@ -177,7 +177,7 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
     scatter_ax: Axes = scatter_fig.add_subplot(1, 1, 1)
 
     # Scatter plots
-    scatter1 = scatter_ax.scatter(
+    on_demand_scatter = scatter_ax.scatter(
         on_demand_df["abr"],
         on_demand_df["consumption"],
         c=on_demand_df["ajbr"],
@@ -186,7 +186,8 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
         alpha=0.4,
         s=25,
     )
-    scatter2 = scatter_ax.scatter(
+    # Prophylaxis scatter
+    scatter_ax.scatter(
         prophylaxis_df["abr"],
         prophylaxis_df["consumption"],
         c=prophylaxis_df["ajbr"],
@@ -224,7 +225,7 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
     scatter_ax.set_title("Factor Consumption vs. ABR")
     scatter_ax.legend()
     scatter_ax.grid(True, alpha=0.3)
-    scatter_fig.colorbar(scatter1, ax=scatter_ax, label="AJBR (On-Demand)")
+    scatter_fig.colorbar(on_demand_scatter, ax=scatter_ax, label="AJBR (On-Demand)")
     logger.info("Factor consumption vs. ABR plotted")
     return scatter_fig
 
@@ -274,7 +275,7 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
     cost_ax: Axes = cost_fig.add_subplot(1, 1, 1)
 
     # Scatter plots
-    cost_scatter1 = cost_ax.scatter(
+    on_demand_scatter = cost_ax.scatter(
         on_demand_df["abr"],
         on_demand_df["costs"],
         c=on_demand_df["ajbr"],
@@ -283,7 +284,8 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
         alpha=0.4,
         s=25,
     )
-    cost_scatter2 = cost_ax.scatter(
+    # Prophylaxis scatter
+    cost_ax.scatter(
         prophylaxis_df["abr"],
         prophylaxis_df["costs"],
         c=prophylaxis_df["ajbr"],
@@ -321,7 +323,7 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
     cost_ax.set_title("Factor Costs vs. ABR (Outliers Removed via Cook’s Distance)")
     cost_ax.legend()
     cost_ax.grid(True, alpha=0.3)
-    cost_fig.colorbar(cost_scatter1, ax=cost_ax, label="AJBR (On-Demand)")
+    cost_fig.colorbar(on_demand_scatter, ax=cost_ax, label="AJBR (On-Demand)")
     logger.info("Costs vs. ABR plotted")
     return cost_fig
 
@@ -366,8 +368,6 @@ def plot_qaly_vs_abr(data: DataExtract) -> Figure:
     return utility_fig
 
 
-# TODO:
-# Check what was the min and max bleeding events (prophylaxis inputs ABR) for each category
 def plot_icer_scatter(data: DataExtract) -> Figure:
     """
     Plot cost-effectiveness plane with ICER scatter.
@@ -388,18 +388,31 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
         f"Dominant: {len(dominant)}, Cost-effective: {len(cost_eff)}, Not cost-effective: {len(not_cost_eff)}, Dominated: {len(dominated)}"
     )
 
-    def median_icer(pairs: List[Tuple[float, Tuple[float, float, float]]]):
+    def min_max_median_icer(pairs: List[Tuple[float, Tuple[float, float, float]]]):
+        # Pairs icer, (dc, dq, da)
         values = [i for i, _ in pairs if np.isfinite(i)]
-        return np.median(values) if values else float("nan")
+        return (np.min(values), np.max(values), np.median(values))
+
+    def min_max_median_abr(
+        pairs: List[Tuple[float, Tuple[float, float, float]]],
+    ) -> tuple:
+        values = [i[2] for _, i in pairs if np.isfinite(_)]
+        return (np.min(values), np.max(values), np.median(values))
 
     for label, pairs in [
         ("dominant", dominant),
         ("cost-effective", cost_eff),
         ("not cost-effective", not_cost_eff),
     ]:
-        med = median_icer(pairs)
+        max_icer, min_icer, median_icer = min_max_median_icer(pairs)
+        max_d_abr, min_d_abr, med_d_abr = min_max_median_abr(pairs)
         logger.info(
-            f"Median ICER ({label}): {'N/A' if np.isnan(med) else f'${med:,.2f}/QALY'}"
+            f"""
+        {label.upper()}:
+        Max reduction in weeks spent with bleeding: {abs(max_d_abr):.0f}, ICER: ${max_icer:,.0f}/QALY
+        Min reduction in weeks spent with bleeding: {abs(min_d_abr):.0f}, ICER: ${min_icer:,.0f}/QALY
+        Median reduction in weeks spent with bleeding: {abs(med_d_abr):.0f}, ICER: ${median_icer:,.0f}/QALY
+            """
         )
 
     # Centroid calculation with safeguard

@@ -9,6 +9,7 @@
         "axhline",
         "axvline",
         "boxstyle",
+        "cbar",
         "cmap",
         "cmin",
         "colorbar",
