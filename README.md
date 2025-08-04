@@ -1,5 +1,5 @@
 TODO:
-- use datashader or simply use a subset of full data to avoid bottleneck processing issue with drawing scatter using matplotlib
+- revise the many to many relationship for icer pairs to one to one to get valid statistics. many to many does not follows PDA standards.
 - asses quality adjusted life years per treatment arms, to validated reasonable effects on bleeding event on over all patient quality of life.
 - test model accuracy if data comes available.
 
