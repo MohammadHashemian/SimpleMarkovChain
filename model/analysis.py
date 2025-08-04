@@ -101,38 +101,24 @@ def extract(
         (row["costs"], row["qalys"], row["abr"]) for _, row in prophylaxis_df.iterrows()
     ]
 
-    # Excludes positive delta ABR
-    valid_pairs = [
-        (o_p, p_p)
-        for o_p in on_demand_pair
-        for p_p in prophylaxis_pair
-        if p_p[2] - o_p[2] <= 0
+    icer_pairs = [
+        (
+            p[0] - o[0],  # Δ Cost
+            p[1] - o[1],  # Δ QALY
+            p[2] - o[2],  # Δ ABR
+        )
+        for o, p in zip(on_demand_pair, prophylaxis_pair)
+        if (p[2] - o[2]) < 0
     ]
 
-    # Set sample size
-    sample_size = min(1_000_000, len(valid_pairs))
-
-    # Sample indices
-    sampled_indices = np.random.choice(
-        len(valid_pairs), size=sample_size, replace=False
-    )
-
-    # Get sampled pairs using the indices
-    sampled_pairs = [valid_pairs[i] for i in sampled_indices]
-
-    # Calculate ICER pairs for sampled pairs
-    sampled_icer_pairs = [
-        (p_p[0] - o_p[0], p_p[1] - o_p[1], p_p[2] - o_p[2])
-        for o_p, p_p in sampled_pairs
-    ]
     logger.info(
-        f"Possible transitions from on-demand to prophylaxis truncated to: {len(sampled_icer_pairs)} pairs"
+        f"Possible transitions from on-demand to prophylaxis truncated to: {len(icer_pairs)} pairs"
     )
 
     # Categorize ICERs
     dom, dmd, ce, nce, lce, icers = [], [], [], [], [], []
 
-    for dc, dq, da in sampled_icer_pairs:
+    for dc, dq, da in icer_pairs:
         if da > 0:
             raise ValueError("ICER calculation with positive delta ABR is prohibited")
         if dq < 0 and dc > 0:  # Dominated
@@ -158,7 +144,7 @@ def extract(
             nce.append(pair)
 
     # Log categorization stats
-    total = len(sampled_icer_pairs)
+    total = len(icer_pairs)
     if total > 0:
         logger.info("Categorized ICER pairs:")
         logger.info(f"Dominant: {len(dom)} ({len(dom)/total:.2%})")
@@ -177,7 +163,7 @@ def extract(
 
     return DataExtract(
         dataframes=(on_demand_df, prophylaxis_df),
-        icer_pairs=sampled_icer_pairs,
+        icer_pairs=icer_pairs,
         categorized=(dom, dmd, ce, nce, icers),
     )
 
@@ -380,6 +366,8 @@ def plot_qaly_vs_abr(data: DataExtract) -> Figure:
     return utility_fig
 
 
+# TODO:
+# Check what was the min and max bleeding events (prophylaxis inputs ABR) for each category
 def plot_icer_scatter(data: DataExtract) -> Figure:
     """
     Plot cost-effectiveness plane with ICER scatter.
