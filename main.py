@@ -145,13 +145,13 @@ def markov(
     typer.echo(f"Number of samples: {len(on_demand_inputs)}")
     typer.echo(f"Sample input example: {on_demand_inputs[0]}")
     typer.echo(
-        f"Median total factor use: {np.median(on_demand_results['total_factors_use']):.0f}"
+        f"Median total factor use: {np.median(on_demand_results['total_factors_use']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor consumption: {np.median(on_demand_results['annual_factor_consumption']):.0f}"
+        f"Median annual factor consumption: {np.median(on_demand_results['annual_factor_consumption']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor costs: {np.median(on_demand_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor costs: {np.median(on_demand_results['total_factors_costs']):,.0f}$, PPP"
     )
     typer.echo(f"Median QALYS: {np.median(on_demand_results['QALYS']):.2f}")
 
@@ -172,13 +172,13 @@ def markov(
     typer.echo(f"Number of samples: {len(prophylaxis_inputs)}")
     typer.echo(f"Sample input example: {prophylaxis_inputs[0]}")
     typer.echo(
-        f"Median total factor use (Prophylaxis): {np.median(prophylaxis_results['total_factors_use']):.0f}"
+        f"Median total factor use (Prophylaxis): {np.median(prophylaxis_results['total_factors_use']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor consumption: {np.median(prophylaxis_results['annual_factor_consumption']):.0f}"
+        f"Median annual factor consumption: {np.median(prophylaxis_results['annual_factor_consumption']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor costs: {np.median(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor costs: {np.median(prophylaxis_results['total_factors_costs']):,.0f}$, PPP"
     )
     typer.echo(
         f"Median QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"

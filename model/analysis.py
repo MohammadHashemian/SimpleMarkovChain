@@ -105,6 +105,31 @@ def extract(
         (row["costs"], row["qalys"], row["abr"]) for _, row in prophylaxis_df.iterrows()
     ]
 
+    pairs = list(zip(on_demand_pair, prophylaxis_pair))
+    deltas = [(p[0] - o[0], p[1] - o[1], p[2] - o[2]) for o, p in pairs]
+    dC = [d[0] for d in deltas]
+    dQ = [d[1] for d in deltas]
+    dABR = [d[2] for d in deltas]  # report as secondary
+    # Point estimate ICER (ratio of means)
+    mean_dC = np.mean(dC)
+    mean_dQ = np.mean(dQ)
+
+    logger.info(f"Point estimate ICER (ratio of means) ${mean_dC/mean_dQ:,.0f}")
+    
+    # Bootstrap ICER for uncertainty
+    n_bootstraps = 1000
+    bootstrap_icers = []
+    for _ in range(n_bootstraps):
+        indices = np.random.choice(len(dC), size=len(dC), replace=True)
+        boot_dC = np.mean([dC[i] for i in indices])
+        boot_dQ = np.mean([dQ[i] for i in indices])
+        if boot_dQ != 0:
+            bootstrap_icers.append(boot_dC / boot_dQ)
+
+    if bootstrap_icers:
+        ci_lower, ci_upper = np.percentile(bootstrap_icers, [2.5, 97.5])
+        logger.info(f"95% CI for ICER: ${ci_lower:,.0f} to ${ci_upper:,.0f}")
+        
     icer_pairs = [
         (
             p[0] - o[0],  # Δ Cost

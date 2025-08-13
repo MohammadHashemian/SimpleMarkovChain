@@ -1,19 +1,21 @@
 DEBUG: Set display.max_colwidth to None
 DEBUG: Suppressing matplotlib font manager logger
 INFO: No outlier modification applied. drawing model results.
-INFO: Possible transitions from on-demand to prophylaxis truncated to: 1488 pairs
+INFO: Point estimate ICER (ratio of means) $915,958,489
+INFO: 95% CI for ICER: $876,728,875 to $955,690,334
+INFO: Possible transitions from on-demand to prophylaxis truncated to: 5958 pairs
 INFO: Categorized ICER pairs:
 INFO: Dominant: 0 (0.00%)
-INFO: Dominated: 86 (5.78%)
-INFO: Lower cost, lower effectiveness: 3 (0.20%)
+INFO: Dominated: 325 (5.45%)
+INFO: Lower cost, lower effectiveness: 21 (0.35%)
 INFO: Cost-effective: 0 (0.00%)
-INFO: Not cost-effective: 1399 (94.02%)
+INFO: Not cost-effective: 5612 (94.19%)
 INFO: Factor consumption vs. ABR plotted
 INFO: Factor consumption histogram plotted
 INFO: Costs vs. ABR plotted
 INFO: QALYs vs. ABR plotted
 INFO: Max reduction in weeks spent with bleeding: 16.0 weeks
-INFO: Dominant: 0, Cost-effective: 0, Not cost-effective: 1399, Dominated: 86
+INFO: Dominant: 0, Cost-effective: 0, Not cost-effective: 5612, Dominated: 325
 INFO: 
         DOMINANT:
         Max reduction in weeks spent with bleeding: 0, ICER: $0/QALY
@@ -28,11 +30,11 @@ INFO:
             
 INFO: 
         NOT COST-EFFECTIVE:
-        Max reduction in weeks spent with bleeding: 1, ICER: $32,639,257,093/QALY
-        Min reduction in weeks spent with bleeding: 16, ICER: $164,329,667/QALY
-        Median reduction in weeks spent with bleeding: 8, ICER: $1,509,646,522/QALY
+        Max reduction in weeks spent with bleeding: 1, ICER: $112,041,953,591/QALY
+        Min reduction in weeks spent with bleeding: 16, ICER: $152,457,861/QALY
+        Median reduction in weeks spent with bleeding: 8, ICER: $1,556,850,827/QALY
             
-INFO: Median ICER: $1,976,042,313/QALY, Median ΔABR: -8.00
+INFO: Median ICER: $1,964,334,248/QALY, Median ΔABR: -8.00
 WARNING: No data for Dominant (Cost-Saving, More Effective) in ICER scatter
 WARNING: No data for Cost-Effective in ICER scatter
 INFO: ICER scatter plotted
