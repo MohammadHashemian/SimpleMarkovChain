@@ -34,6 +34,7 @@ def extract(
     on_demand_results: Dict,
     prophylaxis_results: Dict,
     n_samples: int,
+    remove_outliers=False,
 ) -> DataExtract:
     """
     Summary
@@ -86,12 +87,15 @@ def extract(
         }
     )
     # Remove outliers
-    on_demand_df = remove_outliers_robust(
-        on_demand_df, "costs", "abr", threshold_factor=4
-    )
-    prophylaxis_df = remove_outliers_robust(
-        prophylaxis_df, "costs", "abr", threshold_factor=4
-    )
+    if remove_outliers:
+        on_demand_df = remove_outliers_robust(
+            on_demand_df, "costs", "abr", threshold_factor=4
+        )
+        prophylaxis_df = remove_outliers_robust(
+            prophylaxis_df, "costs", "abr", threshold_factor=4
+        )
+    else:
+        logger.info("No outlier modification applied. drawing model results.")
 
     # Prepare (Cost, QALY, ABR) pairs
     on_demand_pair = [
@@ -372,15 +376,16 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     """
     Plot cost-effectiveness plane with ICER scatter.
     """
+    # Plot
     icer_fig = plt.figure(figsize=(20, 10))
     icer_ax: Axes = icer_fig.add_subplot(1, 1, 1)
+    # Data
     icer_pairs = data.icer_pairs
     dominant, dominated, cost_eff, not_cost_eff, icers = data.categorized
 
     # Summary stats
-    delta_costs, delta_qalys, delta_abr = (
-        zip(*icer_pairs) if icer_pairs else ([], [], [])
-    )
+    # Empty icer_pairs not handled
+    delta_costs, delta_qalys, delta_abr = zip(*icer_pairs)
     logger.info(
         f"Max reduction in weeks spent with bleeding: {np.max([abs(da) for da in delta_abr]) if delta_abr else 'N/A'} weeks"
     )
@@ -391,36 +396,40 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     def min_max_median_icer(pairs: List[Tuple[float, Tuple[float, float, float]]]):
         # Pairs icer, (dc, dq, da)
         values = [i for i, _ in pairs if np.isfinite(i)]
-        return (np.min(values), np.max(values), np.median(values))
+        if not values:
+            return (0, 0, 0)
+        return (float(np.min(values)), float(np.max(values)), float(np.median(values)))
 
     def min_max_median_abr(
         pairs: List[Tuple[float, Tuple[float, float, float]]],
     ) -> tuple:
         values = [i[2] for _, i in pairs if np.isfinite(_)]
-        return (np.min(values), np.max(values), np.median(values))
+        if not values:
+            return (0, 0, 0)
+        return (float(np.min(values)), float(np.max(values)), float(np.median(values)))
 
     for label, pairs in [
         ("dominant", dominant),
         ("cost-effective", cost_eff),
         ("not cost-effective", not_cost_eff),
     ]:
-        max_icer, min_icer, median_icer = min_max_median_icer(pairs)
-        max_d_abr, min_d_abr, med_d_abr = min_max_median_abr(pairs)
+        min_icer, max_icer, median_icer = min_max_median_icer(pairs)
+        min_d_abr, max_d_abr, median_d_abr = min_max_median_abr(pairs)
         logger.info(
             f"""
         {label.upper()}:
         Max reduction in weeks spent with bleeding: {abs(max_d_abr):.0f}, ICER: ${max_icer:,.0f}/QALY
         Min reduction in weeks spent with bleeding: {abs(min_d_abr):.0f}, ICER: ${min_icer:,.0f}/QALY
-        Median reduction in weeks spent with bleeding: {abs(med_d_abr):.0f}, ICER: ${median_icer:,.0f}/QALY
+        Median reduction in weeks spent with bleeding: {abs(median_d_abr):.0f}, ICER: ${median_icer:,.0f}/QALY
             """
         )
 
-    # Centroid calculation with safeguard
-    m_cost = np.median(delta_costs or [0])
-    m_qaly = np.median(delta_qalys or [0])
-    centroid = m_cost / m_qaly if m_qaly != 0 else float("inf")
+    # Centroid calculation without safeguards
+    median_cost = np.median(delta_costs)
+    median_qaly = np.median(delta_qalys)
+    centroid = median_cost / median_qaly
     logger.info(
-        f"Median ICER: {'Undefined' if m_qaly == 0 else f'${centroid:,.0f}/QALY'}, Median ΔABR: {np.median(delta_abr or [0]):.2f}"
+        f"Median ICER: ${centroid:,.0f}/QALY, Median ΔABR: {np.median(delta_abr or [0]):.2f}"
     )
 
     def scatter(pairs, label, marker, cmap="viridis", color=None):
@@ -441,9 +450,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
             label=label,
         )
 
-    s_dmd = scatter(
-        dominated, "Dominated (More Cost, Worse Outcome)", "v", cmap="Grays"
-    )
+    s_dmd = scatter(dominated, "Dominated", "v", cmap="Grays")
     s_dom = scatter(dominant, "Dominant (Cost-Saving, More Effective)", "^")
     s_ce = scatter(cost_eff, "Cost-Effective", "o", cmap="viridis")
     s_nce = scatter(not_cost_eff, "Not Cost-Effective", "x", cmap="plasma")
@@ -458,11 +465,17 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
 
     # Centroid
     icer_ax.scatter(
-        m_qaly, m_cost, color="black", marker="*", s=50, label="Centroid ICER", zorder=5
+        median_qaly,
+        median_cost,
+        color="black",
+        marker="*",
+        s=50,
+        label="Centroid ICER",
+        zorder=5,
     )
     icer_ax.annotate(
-        f"${centroid:,.0f}/QALY" if m_qaly != 0 else "Undefined",
-        (float(m_qaly), float(m_cost)),
+        f"${centroid:,.0f}/QALY" if median_qaly != 0 else "Undefined",
+        (float(median_qaly), float(median_cost)),
         textcoords="offset points",
         xytext=(25, -75),
         ha="center",
@@ -472,6 +485,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
 
     # Axes and lines
     x_rng = np.array([min(delta_qalys or [0]) - 0.1, max(delta_qalys or [0]) + 0.1])
+    # Willingness to play line
     icer_ax.plot(
         x_rng,
         x_rng * constants.WILLINGNESS_TO_PAY_THRESHOLD,
@@ -481,11 +495,12 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     )
     icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
+    # Plot ax settings
     icer_ax.set(
         xlabel="Δ QALYs",
         ylabel="Δ Cost ($)",
         title="Cost-Effectiveness Plane",
-        ylim=(-20000, 40000),
+        ylim=(np.min(delta_costs), np.max(delta_costs)),
     )
     icer_ax.grid(True, linestyle="--", alpha=0.7)
 

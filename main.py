@@ -151,9 +151,9 @@ def markov(
         f"Median annual factor consumption: {np.median(on_demand_results['annual_factor_consumption']):.0f}"
     )
     typer.echo(
-        f"Median annual factor discounted costs: {np.median(on_demand_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor costs: {np.median(on_demand_results['total_factors_costs']):.0f}$, PPP"
     )
-    typer.echo(f"Median discounted QALYS: {np.median(on_demand_results['QALYS']):.2f}")
+    typer.echo(f"Median QALYS: {np.median(on_demand_results['QALYS']):.2f}")
 
     # Run Prophylaxis simulation
     prophylaxis_inputs, prophylaxis_results = run_simulation(
@@ -178,10 +178,10 @@ def markov(
         f"Median annual factor consumption: {np.median(prophylaxis_results['annual_factor_consumption']):.0f}"
     )
     typer.echo(
-        f"Median annual factor discounted costs: {np.median(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
+        f"Median annual factor costs: {np.median(prophylaxis_results['total_factors_costs']):.0f}$, PPP"
     )
     typer.echo(
-        f"Median discounted QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"
+        f"Median QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"
     )
 
     # Generate and save plots

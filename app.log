@@ -1,35 +1,38 @@
 DEBUG: Set display.max_colwidth to None
 DEBUG: Suppressing matplotlib font manager logger
-INFO: Possible transitions from on-demand to prophylaxis truncated to: 6528 pairs
+INFO: No outlier modification applied. drawing model results.
+INFO: Possible transitions from on-demand to prophylaxis truncated to: 1488 pairs
 INFO: Categorized ICER pairs:
-INFO: Dominant: 342 (5.24%)
-INFO: Dominated: 1125 (17.23%)
-INFO: Lower cost, lower effectiveness: 0 (0.00%)
-INFO: Cost-effective: 3728 (57.11%)
-INFO: Not cost-effective: 1333 (20.42%)
+INFO: Dominant: 0 (0.00%)
+INFO: Dominated: 86 (5.78%)
+INFO: Lower cost, lower effectiveness: 3 (0.20%)
+INFO: Cost-effective: 0 (0.00%)
+INFO: Not cost-effective: 1399 (94.02%)
 INFO: Factor consumption vs. ABR plotted
 INFO: Factor consumption histogram plotted
 INFO: Costs vs. ABR plotted
 INFO: QALYs vs. ABR plotted
-INFO: Max reduction in weeks spent with bleeding: 44.0 weeks
-INFO: Dominant: 342, Cost-effective: 3728, Not cost-effective: 1333, Dominated: 1125
+INFO: Max reduction in weeks spent with bleeding: 16.0 weeks
+INFO: Dominant: 0, Cost-effective: 0, Not cost-effective: 1399, Dominated: 86
 INFO: 
         DOMINANT:
-        Max reduction in weeks spent with bleeding: 44, ICER: $-1,754/QALY
-        Min reduction in weeks spent with bleeding: 34, ICER: $-2/QALY
-        Median reduction in weeks spent with bleeding: 37, ICER: $-364/QALY
+        Max reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Min reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Median reduction in weeks spent with bleeding: 0, ICER: $0/QALY
             
 INFO: 
         COST-EFFECTIVE:
-        Max reduction in weeks spent with bleeding: 36, ICER: $1/QALY
-        Min reduction in weeks spent with bleeding: 1, ICER: $20,000/QALY
-        Median reduction in weeks spent with bleeding: 20, ICER: $4,723/QALY
+        Max reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Min reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Median reduction in weeks spent with bleeding: 0, ICER: $0/QALY
             
 INFO: 
         NOT COST-EFFECTIVE:
-        Max reduction in weeks spent with bleeding: 22, ICER: $20,030/QALY
-        Min reduction in weeks spent with bleeding: 1, ICER: $8,204,636/QALY
-        Median reduction in weeks spent with bleeding: 10, ICER: $42,702/QALY
+        Max reduction in weeks spent with bleeding: 1, ICER: $32,639,257,093/QALY
+        Min reduction in weeks spent with bleeding: 16, ICER: $164,329,667/QALY
+        Median reduction in weeks spent with bleeding: 8, ICER: $1,509,646,522/QALY
             
-INFO: Median ICER: $11,252/QALY, Median ΔABR: -15.00
+INFO: Median ICER: $1,976,042,313/QALY, Median ΔABR: -8.00
+WARNING: No data for Dominant (Cost-Saving, More Effective) in ICER scatter
+WARNING: No data for Cost-Effective in ICER scatter
 INFO: ICER scatter plotted

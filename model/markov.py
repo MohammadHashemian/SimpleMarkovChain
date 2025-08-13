@@ -1,7 +1,7 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal
+from model import constants
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
-from model import constants
 from SALib.sample import saltelli
 from pathlib import Path
 import math
@@ -228,11 +228,23 @@ def on_demand_worker_function(abr, kwargs: dict):
     total_utility_values = np.sum(rewards["utility_reward_function"][1:])
     result_dict["total_factors_use"] = total_factor_use
     factor_consumption_list: list = rewards[on_demand_factor_consumption.__name__][1:]
-    factor_costs = [
-        (dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.PPP_CONVERSION_FACTOR)
-        / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
-        for i, dose in enumerate(factor_consumption_list)
-    ]
+    # Discounted costs
+    if constants.DISCOUNT_RATE_WEEKLY:
+        factor_costs = [
+            (
+                dose
+                * constants.PRICE_PER_UI_FACTOR_VIII
+                / constants.PPP_CONVERSION_FACTOR
+            )
+            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+            for i, dose in enumerate(factor_consumption_list)
+        ]
+    else:
+        # Not discounted costs
+        factor_costs = [
+            dose * constants.PRICE_PER_UI_FACTOR_VIII
+            for dose in factor_consumption_list
+        ]
     result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
     result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52)
     result_dict["QALYS"] = total_utility_values
@@ -324,11 +336,23 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     total_utility_values = np.sum(rewards["utility_reward_function"][1:])
     result_dict["total_factors_use"] = total_factor_use
     factor_consumption_list: list = rewards[prophylaxis_factor_consumption.__name__][1:]
-    factor_costs = [
-        (dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.PPP_CONVERSION_FACTOR)
-        / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
-        for i, dose in enumerate(factor_consumption_list)
-    ]
+    # Discounted costs
+    if constants.DISCOUNT_RATE_WEEKLY:
+        factor_costs = [
+            (
+                dose
+                * constants.PRICE_PER_UI_FACTOR_VIII
+                / constants.PPP_CONVERSION_FACTOR
+            )
+            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+            for i, dose in enumerate(factor_consumption_list)
+        ]
+    else:
+        # Not discounted costs
+        factor_costs = [
+            dose * constants.PRICE_PER_UI_FACTOR_VIII
+            for dose in factor_consumption_list
+        ]
     result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
     result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52)
     result_dict["QALYS"] = total_utility_values
@@ -466,31 +490,50 @@ def construct_utility_reward_function(treatment: Literal["on_demand", "prophylax
         if decrement_per_bleed is None:
             raise ValueError(f"Invalid treatment argument: {treatment}")
         utility_value = 0.0
-        match state_lower:
-            case "healthy":
-                # Base utility with decay based on cumulative bleeding events
-                base_utility = 0.85 if treatment == "on_demand" else 0.915
-                decrement = decrement_per_bleed * cumulative_bleeds[0]
-                adjusted_utility = max(
-                    0.65, base_utility - decrement
-                )  # Minimum utility of 0.65
-                utility_value = (adjusted_utility * (1 / 52)) / (
-                    1 + constants.DISCOUNT_RATE_WEEKLY
-                ) ** step
-            case "bleeding":
-                utility_value = (0.60 * (1 / 52)) / (
-                    1 + constants.DISCOUNT_RATE_WEEKLY
-                ) ** step
-            case "joint_bleeding":
-                utility_value = (0.50 * (1 / 52)) / (
-                    1 + constants.DISCOUNT_RATE_WEEKLY
-                ) ** step
-            case "lt_bleeding":
-                utility_value = (0.25 * (1 / 52)) / (
-                    1 + constants.DISCOUNT_RATE_WEEKLY
-                ) ** step
-            case "death":
-                utility_value = 0
+        # Discounted utility
+        if constants.DISCOUNT_RATE_WEEKLY:
+            match state_lower:
+                case "healthy":
+                    # Base utility with decay based on cumulative bleeding events
+                    base_utility = 0.85 if treatment == "on_demand" else 0.915
+                    decrement = decrement_per_bleed * cumulative_bleeds[0]
+                    adjusted_utility = max(
+                        0.65, base_utility - decrement
+                    )  # Minimum utility of 0.65
+                    utility_value = (adjusted_utility * (1 / 52)) / (
+                        1 + constants.DISCOUNT_RATE_WEEKLY
+                    ) ** step
+                case "bleeding":
+                    utility_value = (0.60 * (1 / 52)) / (
+                        1 + constants.DISCOUNT_RATE_WEEKLY
+                    ) ** step
+                case "joint_bleeding":
+                    utility_value = (0.50 * (1 / 52)) / (
+                        1 + constants.DISCOUNT_RATE_WEEKLY
+                    ) ** step
+                case "lt_bleeding":
+                    utility_value = (0.25 * (1 / 52)) / (
+                        1 + constants.DISCOUNT_RATE_WEEKLY
+                    ) ** step
+                case "death":
+                    utility_value = 0
+        # Not discounted utilities and not decremented
+        else:
+            match state_lower:
+                case "healthy":
+                    base_utility = 0.90
+                    # Not decremented
+                    # TODO:
+                    # Consider adding arthropathy state some how
+                    utility_value = base_utility * (1 / 52)
+                case "bleeding":
+                    utility_value = 0.60 * (1 / 52)
+                case "joint_bleeding":
+                    utility_value = 0.50 * (1 / 52)
+                case "lt_bleeding":
+                    utility_value = 0.25 * (1 / 52)
+                case "death":
+                    utility_value = 0
         return utility_value
 
     return utility_reward_function
