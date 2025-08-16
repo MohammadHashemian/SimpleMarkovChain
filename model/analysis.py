@@ -4,7 +4,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from statsmodels.robust.robust_linear_model import RLMResults
-from model.utils import remove_outliers_robust
+from model.utils import cal_body_weight, remove_outliers_robust
 from src.utils.logger import get_logger
 import model.constants as constants
 import matplotlib.pyplot as plt
@@ -64,6 +64,8 @@ def extract(
     prophylaxis_consumptions = prophylaxis_results["total_factors_use"]
     prophylaxis_annual_use = prophylaxis_results["annual_factor_consumption"]
     prophylaxis_utilities = prophylaxis_results["QALYS"]
+    # Array of weekly patients weight
+    body_weights = [cal_body_weight(i) for i in range(constants.NUM_CYCLES)]
 
     # Create DataFrames
     on_demand_df = pd.DataFrame(
@@ -86,6 +88,13 @@ def extract(
             "qalys": prophylaxis_utilities,
         }
     )
+    
+    # Should it be applied on overall results or year by year (?)
+    od_per_kg = on_demand_df["annual_factor_use"].apply(lambda x: x/np.mean(body_weights))
+    pro_per_kg = prophylaxis_df["annual_factor_use"].apply(lambda x: x/np.mean(body_weights))
+    logger.info(f"On Demand Mean annual consumption per mean body weight: {od_per_kg.mean():.0f}")
+    logger.info(f"Prophylaxis Mean annual consumption per mean body weight: {pro_per_kg.mean():.0f}")
+    
     # Remove outliers
     if remove_outliers:
         on_demand_df = remove_outliers_robust(
@@ -104,12 +113,17 @@ def extract(
     prophylaxis_pair = [
         (row["costs"], row["qalys"], row["abr"]) for _, row in prophylaxis_df.iterrows()
     ]
+    np.random.shuffle(on_demand_pair)
+    np.random.shuffle(prophylaxis_pair)
 
+    # TODO:
+    # Why max reduction in ABR is not equal to 44 events?
     pairs = list(zip(on_demand_pair, prophylaxis_pair))
     deltas = [(p[0] - o[0], p[1] - o[1], p[2] - o[2]) for o, p in pairs]
     dC = [d[0] for d in deltas]
     dQ = [d[1] for d in deltas]
     dABR = [d[2] for d in deltas]  # report as secondary
+    
     # Point estimate ICER (ratio of means)
     mean_dC = np.mean(dC)
     mean_dQ = np.mean(dQ)
@@ -141,7 +155,7 @@ def extract(
     ]
 
     logger.info(
-        f"Possible transitions from on-demand to prophylaxis truncated to: {len(icer_pairs)} pairs"
+        f"Transitions from on-demand to prophylaxis with {len(icer_pairs)} pairs"
     )
 
     # Categorize ICERs
@@ -509,7 +523,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     )
 
     # Axes and lines
-    x_rng = np.array([min(delta_qalys or [0]) - 0.1, max(delta_qalys or [0]) + 0.1])
+    x_rng = np.array([0, max(delta_qalys) + 1])
     # Willingness to play line
     icer_ax.plot(
         x_rng,

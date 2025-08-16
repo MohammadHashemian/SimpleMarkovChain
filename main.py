@@ -110,26 +110,26 @@ def markov(
         if use_cache and not force_recompute and cache_path.exists():
             cache_data = load_cache(cache_path, n_samples, steps)
             if cache_data:
-                inputs, results = cache_data
+                inputs, outputs = cache_data
                 typer.echo(
                     f"{sim_name} loaded from cache in {(time() - start_time):.0f} seconds."
                 )
-                return inputs, results
+                return inputs, outputs
 
         # Run simulation if no cache or force recompute
-        inputs, results = sim_func(
+        inputs, outputs = sim_func(
             states=states, start_state=start_state, steps=steps, n_samples=n_samples
         )
         if use_cache:
-            save_cache(cache_path, inputs, results, n_samples, steps)
+            save_cache(cache_path, inputs, outputs, n_samples, steps)
 
         typer.echo(
             f"{sim_name} simulation completed in {(time() - start_time):.0f} seconds."
         )
-        return inputs, results
+        return inputs, outputs
 
     # Run On-Demand simulation
-    on_demand_inputs, on_demand_results = run_simulation(
+    on_demand_inputs, on_demand_outputs = run_simulation(
         sim_func=model.markov.on_demand_psa,
         cache_path=on_demand_cache_path,
         states=states,
@@ -145,18 +145,18 @@ def markov(
     typer.echo(f"Number of samples: {len(on_demand_inputs)}")
     typer.echo(f"Sample input example: {on_demand_inputs[0]}")
     typer.echo(
-        f"Median total factor use: {np.median(on_demand_results['total_factors_use']):,.0f}"
+        f"Median total factor use: {np.median(on_demand_outputs['total_factors_use']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor consumption: {np.median(on_demand_results['annual_factor_consumption']):,.0f}"
+        f"Median annual factor consumption: {np.median(on_demand_outputs['annual_factor_consumption']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor costs: {np.median(on_demand_results['total_factors_costs']):,.0f}$, PPP"
+        f"Median annual factor costs: ${np.median(on_demand_outputs['total_factors_costs']):,.0f}"
     )
-    typer.echo(f"Median QALYS: {np.median(on_demand_results['QALYS']):.2f}")
+    typer.echo(f"Median QALYS: {np.median(on_demand_outputs['QALYS']):.2f}")
 
     # Run Prophylaxis simulation
-    prophylaxis_inputs, prophylaxis_results = run_simulation(
+    prophylaxis_inputs, prophylaxis_outputs = run_simulation(
         sim_func=model.markov.prophylaxis_psa,
         cache_path=prophylaxis_cache_path,
         states=states,
@@ -172,16 +172,16 @@ def markov(
     typer.echo(f"Number of samples: {len(prophylaxis_inputs)}")
     typer.echo(f"Sample input example: {prophylaxis_inputs[0]}")
     typer.echo(
-        f"Median total factor use (Prophylaxis): {np.median(prophylaxis_results['total_factors_use']):,.0f}"
+        f"Median total factor use (Prophylaxis): {np.median(prophylaxis_outputs['total_factors_use']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor consumption: {np.median(prophylaxis_results['annual_factor_consumption']):,.0f}"
+        f"Median annual factor consumption: {np.median(prophylaxis_outputs['annual_factor_consumption']):,.0f}"
     )
     typer.echo(
-        f"Median annual factor costs: {np.median(prophylaxis_results['total_factors_costs']):,.0f}$, PPP"
+        f"Median annual factor costs: ${np.median(prophylaxis_outputs['total_factors_costs']):,.0f}"
     )
     typer.echo(
-        f"Median QALYS: {np.median(prophylaxis_results['QALYS']):.2f}"
+        f"Median QALYS: {np.median(prophylaxis_outputs['QALYS']):.2f}"
     )
 
     # Generate and save plots
@@ -190,8 +190,8 @@ def markov(
         plots = model.analysis.plot(
             on_demand_inputs,
             prophylaxis_inputs,
-            on_demand_results,
-            prophylaxis_results,
+            on_demand_outputs,
+            prophylaxis_outputs,
             n_samples=n_samples,
         )
         save_dir = PROJECT_ROOT / "outputs" / "figures"

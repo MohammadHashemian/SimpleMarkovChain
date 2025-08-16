@@ -242,7 +242,7 @@ def on_demand_worker_function(abr, kwargs: dict):
     else:
         # Not discounted costs
         factor_costs = [
-            dose * constants.PRICE_PER_UI_FACTOR_VIII
+            dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.RIAL_USD_PRICE
             for dose in factor_consumption_list
         ]
     result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
@@ -350,7 +350,7 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     else:
         # Not discounted costs
         factor_costs = [
-            dose * constants.PRICE_PER_UI_FACTOR_VIII
+            dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.RIAL_USD_PRICE
             for dose in factor_consumption_list
         ]
     result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
