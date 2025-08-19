@@ -13,7 +13,7 @@ import enlighten
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-class MarkovChain:
+class MarkovChains:
     """A Markov chain implementation that generates state transitions with reward tracking and dynamic chain switching."""
 
     def __init__(
@@ -259,9 +259,11 @@ class ProbabilityBuilder:
 
             # Normalize to ensure row sums to 1
             if total_prob > 1:
-                print(
-                    f"Warning: Sum of probabilities ({total_prob}) for state {state} exceeds 1, normalizing"
-                )
+                # TODO:
+                # Handle prints using logging module
+                # print(
+                #     f"Warning: Sum of probabilities ({total_prob}) for state {state} exceeds 1, normalizing"
+                # )
                 for i in range(n):
                     probs[i] /= total_prob
             elif total_prob < 1:
@@ -294,27 +296,83 @@ def load_transition_matrix(
     return (start_state, states, transitions)
 
 
-# TODO:
-# Update worker functions to work with new generic dynamic transition builder
 def on_demand_worker_function(abr, kwargs: dict):
     """
     Worker function to process a single abr value.
     Args:
         abr: Input array for ABR value
-        kwargs: MarkovChain keyword arguments
+        kwargs: MarkovChains keyword arguments
     Returns:
         Tuple of (input_dict, result_dict) for one iteration.
     """
     abr = round(float(abr[0]))
     ajbr = round(0.75 * abr)
-    builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.021)
-    transition = builder.get_matrix()
-    markov = MarkovChain(
-        transitions=transition,
-        lambda_bleeding=(abr - ajbr) / 52,  # PSA_KWARGS
-        lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
+    chains = kwargs["chains"]
+    primary_states = chains["primary"][0]
+    secondary_states = chains["secondary"][0]
+
+    # Define primary states transition pairs
+    primary_transition_pairs = {
+        ("Healthy", "Bleeding"): (abr / 52, "weekly"),
+        ("Healthy", "Hemarthrosis"): (ajbr / 52, "weekly"),
+        ("Bleeding", "Healthy"): (0.9, None),
+        ("Bleeding", "Death"): (0.05, None),
+        ("Hemarthrosis", "Healthy"): (0.8, None),
+        ("Hemarthrosis", "Arthropathy"): (0.0015, None),  # Placeholder value
+        ("Arthropathy", "Healthy"): (0.7, None),
+        ("Arthropathy", "Death"): (0.1, None),
+        ("LT_Bleeding", "Death"): (0.3, None),
+    }
+
+    # Define special transitions for absorbing states
+    primary_special_transitions = {
+        "Death": [0.0] * (len(primary_states) - 1) + [1.0],
+        "LT_Bleeding": [0.0] * (len(primary_states) - 2) + [0.7, 0.3],
+    }
+
+    # Define secondary states transition pairs
+    secondary_transition_pairs = {
+        ("Healthy", "Bleeding"): ((abr - ajbr) / 52, "weekly"),
+        ("Healthy", "Hemarthrosis"): (ajbr / 52, "weekly"),
+        ("Bleeding", "Healthy"): (0.9, None),
+        ("Bleeding", "Death"): (0.05, None),
+        ("Hemarthrosis", "Healthy"): (0.8, None),
+        ("LT_Bleeding", "Death"): (0.3, None),
+    }
+
+    secondary_special_transitions = {
+        "Death": [0.0] * (len(chains["secondary"][0]) - 1) + [1.0],
+        "LT_Bleeding": [0.0] * (len(secondary_states) - 2) + [0.7, 0.3],
+    }
+
+    # Initialize probability builders
+    primary_builder = ProbabilityBuilder(
+        states=primary_states,
+        transition_pairs=primary_transition_pairs,
+        special_transitions=primary_special_transitions,
+    )
+
+    secondary_builder = ProbabilityBuilder(
+        states=secondary_states,
+        transition_pairs=secondary_transition_pairs,
+        special_transitions=secondary_special_transitions,
+    )
+
+    # Define chains for MarkovChains
+    chains["primary"] = (primary_states, primary_builder.get_matrix())
+    chains["secondary"] = (secondary_states, secondary_builder.get_matrix())
+
+    # Drop previously assigned chains
+    kwargs.pop("chains")
+
+    # Initialize MarkovChains
+    markov = MarkovChains(
+        chains=chains,
+        lambda_bleeding=(abr - ajbr) / 52,
+        lambda_joint_bleeding=ajbr / 52,
         **kwargs,
     )
+
     # Wrap utility_reward_function to track cumulative bleeds
     markov.add_reward_function(on_demand_factor_consumption)
     markov.add_reward_function(construct_utility_reward_function("on_demand"))
@@ -355,9 +413,14 @@ def on_demand_worker_function(abr, kwargs: dict):
 
 def on_demand_psa(n_samples: int, **kwargs):
     """
+    Summary
+    -------
+    *_psa functions are wrappers around markov model, they add sampling for model inputs and runs the model
+    as multiprocess to boost simulating
+
     Args:
         n_samples: Number of samples
-        **kwargs: MarkovChain keyword arguments except transitions as it's generative from saltelli sampling
+        **kwargs: MarkovChain keyword arguments except transitions as probability builder adds it to it
     Returns:
         Tuple of (inputs, results) containing simulation inputs and outputs
     """
@@ -418,7 +481,7 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     ajbr = round(0.75 * abr)
     builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
     transition = builder.get_matrix()
-    markov = MarkovChain(
+    markov = MarkovChains(
         transitions=transition,
         lambda_bleeding=(abr - ajbr) / 52,  # PSA_KWARGS
         lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
