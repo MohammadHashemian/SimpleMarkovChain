@@ -65,7 +65,7 @@ def extract(
     prophylaxis_annual_use = prophylaxis_results["annual_factor_consumption"]
     prophylaxis_utilities = prophylaxis_results["QALYS"]
     # Array of weekly patients weight
-    body_weights = [cal_body_weight(i) for i in range(constants.NUM_CYCLES)]
+    body_weights = [cal_body_weight(i) for i in range(constants.LONG_TERM_CYCLE_COUNTS)]
 
     # Create DataFrames
     on_demand_df = pd.DataFrame(
@@ -155,7 +155,7 @@ def extract(
     ]
 
     logger.info(
-        f"Transitions from on-demand to prophylaxis with {len(icer_pairs)} pairs"
+        f"Transitions from on-demand to prophylaxis with {len(icer_pairs)} pairs, Truncated positive delta ABR."
     )
 
     # Categorize ICERs

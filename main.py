@@ -74,7 +74,7 @@ def markov(
     ),
     plot: bool = typer.Option(False, "--plot", help="Generate plots of results."),
 ):
-    num_steps = model.constants.NUM_CYCLES
+    num_steps = model.constants.LONG_TERM_CYCLE_COUNTS
     np.random.seed(42)  # For reproducibility
 
     # Validate n_samples

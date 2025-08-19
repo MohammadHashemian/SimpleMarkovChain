@@ -1,40 +1,45 @@
 DEBUG: Set display.max_colwidth to None
+WARNING: Cache at /home/mohammad/projects/Thesis/hemophilia/cache/on_demand.pkl has mismatched parameters. Ignoring.
+INFO: Cached results at: /home/mohammad/projects/Thesis/hemophilia/cache/on_demand.pkl
+WARNING: Cache at /home/mohammad/projects/Thesis/hemophilia/cache/prophylaxis.pkl has mismatched parameters. Ignoring.
+INFO: Cached results at: /home/mohammad/projects/Thesis/hemophilia/cache/prophylaxis.pkl
 DEBUG: Suppressing matplotlib font manager logger
-INFO: On Demand Mean annual consumption per mean body weight: 1305
-INFO: Prophylaxis Mean annual consumption per mean body weight: 3595
+INFO: On Demand Mean annual consumption per mean body weight: 1310
+INFO: Prophylaxis Mean annual consumption per mean body weight: 4894
 INFO: No outlier modification applied. drawing model results.
-INFO: Point estimate ICER (ratio of means) $962
-INFO: 95% CI for ICER: $856 to $1,120
-INFO: Transitions from on-demand to prophylaxis with 525 pairs
+INFO: Point estimate ICER (ratio of means) $1,514
+INFO: 95% CI for ICER: $1,340 to $1,746
+INFO: Transitions from on-demand to prophylaxis with 525 pairs, Truncated positive delta ABR.
 INFO: Categorized ICER pairs:
-INFO: Dominant: 14 (2.67%)
-INFO: Dominated: 39 (7.43%)
-INFO: Lower cost, lower effectiveness: 1 (0.19%)
-INFO: Cost-effective: 422 (80.38%)
-INFO: Not cost-effective: 49 (9.33%)
+INFO: Dominant: 0 (0.00%)
+INFO: Dominated: 37 (7.05%)
+INFO: Lower cost, lower effectiveness: 0 (0.00%)
+INFO: Cost-effective: 404 (76.95%)
+INFO: Not cost-effective: 84 (16.00%)
 INFO: Factor consumption vs. ABR plotted
 INFO: Factor consumption histogram plotted
 INFO: Costs vs. ABR plotted
 INFO: QALYs vs. ABR plotted
 INFO: Max reduction in weeks spent with bleeding: 42.0 weeks
-INFO: Dominant: 14, Cost-effective: 422, Not cost-effective: 49, Dominated: 39
+INFO: Dominant: 0, Cost-effective: 404, Not cost-effective: 84, Dominated: 37
 INFO: 
         DOMINANT:
-        Max reduction in weeks spent with bleeding: 33, ICER: $-3/QALY
-        Min reduction in weeks spent with bleeding: 42, ICER: $-144/QALY
-        Median reduction in weeks spent with bleeding: 37, ICER: $-56/QALY
+        Max reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Min reduction in weeks spent with bleeding: 0, ICER: $0/QALY
+        Median reduction in weeks spent with bleeding: 0, ICER: $0/QALY
             
 INFO: 
         COST-EFFECTIVE:
-        Max reduction in weeks spent with bleeding: 1, ICER: $4,288/QALY
-        Min reduction in weeks spent with bleeding: 40, ICER: $9/QALY
-        Median reduction in weeks spent with bleeding: 16, ICER: $489/QALY
+        Max reduction in weeks spent with bleeding: 1, ICER: $4,446/QALY
+        Min reduction in weeks spent with bleeding: 42, ICER: $197/QALY
+        Median reduction in weeks spent with bleeding: 18, ICER: $879/QALY
             
 INFO: 
         NOT COST-EFFECTIVE:
-        Max reduction in weeks spent with bleeding: 1, ICER: $151,204/QALY
-        Min reduction in weeks spent with bleeding: 6, ICER: $4,531/QALY
-        Median reduction in weeks spent with bleeding: 3, ICER: $9,442/QALY
+        Max reduction in weeks spent with bleeding: 1, ICER: $130,883/QALY
+        Min reduction in weeks spent with bleeding: 9, ICER: $4,504/QALY
+        Median reduction in weeks spent with bleeding: 4, ICER: $9,145/QALY
             
-INFO: Median ICER: $956/QALY, Median ΔABR: -14.00
+INFO: Median ICER: $1,695/QALY, Median ΔABR: -14.00
+WARNING: No data for Dominant (Cost-Saving, More Effective) in ICER scatter
 INFO: ICER scatter plotted

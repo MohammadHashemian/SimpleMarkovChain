@@ -13,36 +13,47 @@ import enlighten
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+import numpy as np
+import types
+from typing import List, Union, Generator, Optional, Callable, Dict
+
+
 class MarkovChain:
     """A Markov chain implementation that generates state transitions with reward tracking."""
 
     def __init__(
         self,
         states: List[str],
-        transitions: Union[List[List[np.float64]], np.ndarray],
+        transitions: Union[List[List[float]], np.ndarray],
         start_state: str,
         steps: int,
+        secondary_states: Optional[List[str]] = None,
+        transitions_secondary: Optional[Union[List[List[float]], np.ndarray]] = None,
+        switch_condition: Optional[Callable] = None,
         **psa_kwargs,
     ) -> None:
         """
         Initialize Markov chain with states, transitions, and optional reward function.
-
-        Args:
-            states: List of possible states
-            transitions: Transition probability matrix
-            start_state: Initial state
-            steps: Number of steps to simulate
         """
-        self.transitions = np.array(transitions, dtype=np.float64)
+        # Main chain
         self.states = states
+        self.transitions = np.array(transitions, dtype=np.float64)
         self.steps = steps
         self.reward_functions = []
         self.rewards: Dict[str, List[float | int]] = {}
         self.psa_kwargs = psa_kwargs
 
-        # Validate inputs
-        if self.transitions.ndim != 2:
-            raise ValueError("Transition matrix must be 2D")
+        # Secondary chain (optional)
+        self.secondary_states = secondary_states
+        self.secondary_transitions = (
+            np.array(transitions_secondary, dtype=np.float64)
+            if transitions_secondary is not None
+            else None
+        )
+        self.switch_condition = switch_condition
+        self.using_secondary = False
+
+        # Validate main chain
         if self.transitions.shape != (len(states), len(states)):
             raise ValueError(
                 f"Expected {len(states)}x{len(states)} transition matrix, got {self.transitions.shape}"
@@ -53,57 +64,94 @@ class MarkovChain:
             raise ValueError(f"Start state '{start_state}' not in states list")
 
         self.current_state_idx = states.index(start_state)
-        self.num_states = len(states)
+
+        # Validate secondary chain if provided
+        if self.secondary_states is not None and self.secondary_transitions is not None:
+            if self.secondary_transitions.shape != (
+                len(self.secondary_states),
+                len(self.secondary_states),
+            ):
+                raise ValueError(
+                    f"Secondary transition matrix must be {len(self.secondary_states)}x{len(self.secondary_states)}"
+                )
+            if not np.allclose(
+                self.secondary_transitions.sum(axis=1), 1, rtol=1e-5
+            ):
+                raise ValueError(
+                    "Each row in the secondary transition matrix must sum to 1"
+                )
 
     def add_reward_function(self, func: Callable) -> None:
         """Add a reward function to be calculated at each step."""
         self.reward_functions.append(func)
         self.rewards[func.__name__] = []
 
+    def _get_chain(self):
+        """Return active states and transitions."""
+        if self.using_secondary and self.secondary_states is not None and self.secondary_transitions is not None:
+            return self.secondary_states, self.secondary_transitions
+        return self.states, self.transitions
+
     def walk(self, steps: Optional[int] = None) -> Generator[str, None, None]:
         """Generate a sequence of states for the specified number of steps."""
-        current_state = self.current_state_idx
-        if steps:
+        if steps is not None:
             self.steps = steps
 
-        # Calculate reward for initial state (S_0)
+        current_state_idx = self.current_state_idx
+        states, transitions = self._get_chain()
+
+        # --- Rewards for initial state ---
         if self.reward_functions:
-            bleeds_count_per_week_factor = calculate_number_of_bleeds(
-                state=self.states[current_state], **self.psa_kwargs
+            bleeds_count = calculate_number_of_bleeds(
+                state=states[current_state_idx], **self.psa_kwargs
             )
             for func in self.reward_functions:
                 r = func(
                     step=0,
-                    state=self.states[current_state],
-                    number_of_bleeds=bleeds_count_per_week_factor,
+                    state=states[current_state_idx],
+                    number_of_bleeds=bleeds_count,
                     **self.psa_kwargs,
                 )
                 self.rewards[func.__name__].append(r)
 
         for step in range(self.steps):
-            # Yield current state
-            yield self.states[current_state]
+            yield states[current_state_idx]
 
-            # Transition to next state
-            probs = self.transitions[current_state]
-            current_state = np.random.choice(self.num_states, p=probs)
-            bleeds_count_per_week_factor = calculate_number_of_bleeds(
-                state=self.states[current_state], **self.psa_kwargs
-            )
+            # --- Switch chain if condition met ---
+            if (
+                self.switch_condition
+                and not self.using_secondary
+                and self.secondary_states is not None
+                and self.secondary_transitions is not None
+            ):
+                if self.switch_condition(step, states[current_state_idx], **self.psa_kwargs):
+                    self.using_secondary = True
+                    states, transitions = self._get_chain()
+                    # reset state if it doesn’t exist in secondary chain
+                    if states[current_state_idx] not in states:
+                        current_state_idx = 0
+                    else:
+                        current_state_idx = states.index(states[current_state_idx])
 
-            # Calculate rewards for the new state
+            # Transition
+            probs = transitions[current_state_idx]
+            current_state_idx = np.random.choice(len(states), p=probs)
+
+            # Rewards
             if self.reward_functions:
+                bleeds_count = calculate_number_of_bleeds(
+                    state=states[current_state_idx], **self.psa_kwargs
+                )
                 for func in self.reward_functions:
                     r = func(
-                        step=step,
-                        state=self.states[current_state],
-                        number_of_bleeds=bleeds_count_per_week_factor,
+                        step=step + 1,
+                        state=states[current_state_idx],
+                        number_of_bleeds=bleeds_count,
                         **self.psa_kwargs,
                     )
                     self.rewards[func.__name__].append(r)
 
-        # Yield the final state
-        yield self.states[current_state]
+        yield states[current_state_idx]
 
     def collect_rewards(self) -> dict:
         """Return all collected rewards for each reward function."""
@@ -112,7 +160,6 @@ class MarkovChain:
     def run(self) -> List[str]:
         """Run the Markov chain and return the complete sequence of states."""
         return list(self.walk())
-
 
 class ProbabilityBuilder:
     def __init__(self, abr: float, ajbr: float, annual_ltb_prob: float) -> None:
@@ -255,7 +302,7 @@ def on_demand_psa(n_samples: int, **kwargs):
     """
     Args:
         n_samples: Number of samples
-        **kwargs: MarkovChain keyword arguments except transitions
+        **kwargs: MarkovChain keyword arguments except transitions as it's generative from saltelli sampling
     Returns:
         Tuple of (inputs, results) containing simulation inputs and outputs
     """
