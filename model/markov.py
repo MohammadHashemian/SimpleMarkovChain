@@ -1,4 +1,4 @@
-from typing import List, Union, Generator, Optional, Callable, Dict, Literal
+from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
 from model import constants
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
@@ -153,64 +153,123 @@ class MarkovChain:
         return list(self.walk())
 
 
-# TODO:
-# Update probability builder for both primary and secondary matrix support
 class ProbabilityBuilder:
-    def __init__(self, abr: float, ajbr: float, annual_ltb_prob: float) -> None:
-        self.abr = float(abr)
-        self.ajbr = float(ajbr)
-        self.aebr = float(abr) - float(ajbr)
-        self.annual_ltb_prob = float(annual_ltb_prob)
-        self.weekly_ltb_prob = float(annual_ltb_prob) / 52
-
-    def to_bleeding(self):
-        return probability_at_least_one_event(self.aebr, "annual")
-
-    def to_joint_bleeding(self):
-        return probability_at_least_one_event(self.ajbr, "annual")
-
-    def to_ltb(self):
-        return probability_at_least_one_event(self.weekly_ltb_prob, "weekly")
-
-    def to_healthy(self):
-        total = self.to_ltb() + self.to_bleeding() + self.to_joint_bleeding()
-        if total > 1:
-            print(f"Warning: Sum of probabilities ({total}) exceeds 1, clamping to 0")
-        return max(0, 1 - total)
-
-    def get_weekly_ltb(self):
+    def __init__(
+        self,
+        states: List[str],
+        transition_pairs: Dict[
+            Tuple[str, str], Tuple[Union[float, str], Literal["weekly", "annual"]]
+        ],
+        special_transitions: Optional[Dict[str, List[float]]] = None,
+    ) -> None:
         """
-        Note: not a probability, annual ltb event divided to weeks count
-        """
-        return self.weekly_ltb_prob
+        Initialize ProbabilityBuilder with states and transition pairs.
 
-    def get_matrix(self):
-        # Columns [Healthy, Minor, Major, LTB, Death]
-        matrix = [
-            [
-                self.to_healthy(),
-                self.to_bleeding(),
-                self.to_joint_bleeding(),
-                self.to_ltb(),
-                0,
-            ],  # Row: Healthy
-            [
-                self.to_healthy(),
-                self.to_bleeding(),
-                self.to_joint_bleeding(),
-                self.to_ltb(),
-                0,
-            ],  # Row: Minor
-            [
-                self.to_healthy(),
-                self.to_bleeding(),
-                self.to_joint_bleeding(),
-                self.to_ltb(),
-                0,
-            ],  # Row: Major
-            [0.8, 0, 0, 0, 0.2],  # Row: LTB
-            [0, 0, 0, 0, 1],  # Row: Death
-        ]
+        Args:
+            states: List of states for the transition matrix.
+            transition_pairs: Dictionary of (from_state, to_state) -> (value, period) pairs.
+                              Value is a probability or rate; period is 'annual', 'weekly', or None (for direct probabilities).
+            special_transitions: Optional dictionary of state -> transition probabilities for states with fixed transitions.
+        """
+        self.states = states
+        self.transition_pairs = transition_pairs
+        self.special_transitions = special_transitions or {}
+        self.state_indices = {state: idx for idx, state in enumerate(states)}
+
+        # Validate states
+        if not states:
+            raise ValueError("States list cannot be empty")
+        if "Death" not in states:
+            raise ValueError("Death state is required for an absorbing state")
+
+        # Validate transition pairs
+        for (from_state, to_state), (value, period) in transition_pairs.items():
+            if from_state not in states or to_state not in states:
+                raise ValueError(f"Invalid state in pair ({from_state}, {to_state})")
+            if not isinstance(value, (int, float, str)):
+                raise ValueError(f"Transition value {value} must be a number or string")
+            if period not in {None, "annual", "weekly"}:
+                raise ValueError(
+                    f"Invalid period {period}; must be None, 'annual', or 'weekly'"
+                )
+
+        # Validate special transitions
+        for state, probs in self.special_transitions.items():
+            if state not in states:
+                raise ValueError(f"Special transition state {state} not in states")
+            if len(probs) != len(states):
+                raise ValueError(
+                    f"Special transition for {state} must have {len(states)} probabilities"
+                )
+            if not np.allclose(sum(probs), 1, rtol=1e-5):
+                raise ValueError(
+                    f"Special transition probabilities for {state} must sum to 1"
+                )
+
+    def get_probability(
+        self, value: Union[float, str], period: Literal["weekly", "annual"]
+    ) -> float:
+        """
+        Convert a rate or probability to a probability value.
+
+        Args:
+            value: The probability or rate.
+            period: The period for rate conversion ('annual', 'weekly', or None).
+
+        Returns:
+            The calculated probability.
+        """
+        if period is None:
+            return float(value)
+        return probability_at_least_one_event(float(value), period)
+
+    def get_matrix(self) -> List[List[float]]:
+        """
+        Construct transition matrix based on provided states and transition pairs.
+
+        Returns:
+            Transition matrix as a list of lists.
+        """
+        n = len(self.states)
+        matrix = [[0.0] * n for _ in range(n)]
+
+        # Handle special transitions (e.g., Death, LT_Bleeding)
+        for state, probs in self.special_transitions.items():
+            idx = self.state_indices[state]
+            matrix[idx] = probs
+
+        # Handle regular transitions
+        for state in self.states:
+            idx = self.state_indices[state]
+            if state in self.special_transitions:
+                continue  # Skip states with special transitions
+
+            # Collect probabilities for transitions from this state
+            probs = [0.0] * n
+            total_prob = 0.0
+            for (from_state, to_state), (
+                value,
+                period,
+            ) in self.transition_pairs.items():
+                if from_state == state:
+                    to_idx = self.state_indices[to_state]
+                    prob = self.get_probability(value, period)
+                    probs[to_idx] = prob
+                    total_prob += prob
+
+            # Normalize to ensure row sums to 1
+            if total_prob > 1:
+                print(
+                    f"Warning: Sum of probabilities ({total_prob}) for state {state} exceeds 1, normalizing"
+                )
+                for i in range(n):
+                    probs[i] /= total_prob
+            elif total_prob < 1:
+                # Assign remaining probability to staying in the same state
+                probs[idx] = 1 - total_prob
+
+            matrix[idx] = probs
+
         return matrix
 
 
@@ -235,6 +294,8 @@ def load_transition_matrix(
     return (start_state, states, transitions)
 
 
+# TODO:
+# Update worker functions to work with new generic dynamic transition builder
 def on_demand_worker_function(abr, kwargs: dict):
     """
     Worker function to process a single abr value.
@@ -342,6 +403,8 @@ def on_demand_psa(n_samples: int, **kwargs):
     return inputs, results
 
 
+# TODO:
+# Update worker functions to work with new generic dynamic transition builder
 def prophylaxis_worker_function(abr, kwargs: dict):
     """
     Worker function to process a single abr value.
