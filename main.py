@@ -180,9 +180,7 @@ def markov(
     typer.echo(
         f"Median annual factor costs: ${np.median(prophylaxis_outputs['total_factors_costs']):,.0f}"
     )
-    typer.echo(
-        f"Median QALYS: {np.median(prophylaxis_outputs['QALYS']):.2f}"
-    )
+    typer.echo(f"Median QALYS: {np.median(prophylaxis_outputs['QALYS']):.2f}")
 
     # Generate and save plots
     if plot:
