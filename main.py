@@ -88,7 +88,7 @@ def markov(
     prophylaxis_cache_path = cache_dir / "prophylaxis.pkl"
 
     # Load transition matrix
-    initial_state, states, on_demand_transition = model.markov.load_transition_matrix(
+    initial_state, states, on_demand_transition = model.markov.load_matrix(
         io=PROJECT_ROOT / "data" / "Transitions.xlsx",
         sheet_name="on_demand",
     )

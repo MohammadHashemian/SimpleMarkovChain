@@ -153,7 +153,7 @@ class MarkovChains:
         return list(self.walk())
 
 
-class ProbabilityBuilder:
+class TransitionGenerator:
     def __init__(
         self,
         states: List[str],
@@ -275,7 +275,7 @@ class ProbabilityBuilder:
         return matrix
 
 
-def load_transition_matrix(
+def load_matrix(
     io: Path,
     sheet_name: str,
 ) -> tuple[str, list[str], np.ndarray]:
@@ -296,6 +296,8 @@ def load_transition_matrix(
     return (start_state, states, transitions)
 
 
+# TODO:
+# Maybe generic worker_function to reduce duplication
 def on_demand_worker_function(abr, kwargs: dict):
     """
     Worker function to process a single abr value.
@@ -346,13 +348,13 @@ def on_demand_worker_function(abr, kwargs: dict):
     }
 
     # Initialize probability builders
-    primary_builder = ProbabilityBuilder(
+    primary_builder = TransitionGenerator(
         states=primary_states,
         transition_pairs=primary_transition_pairs,
         special_transitions=primary_special_transitions,
     )
 
-    secondary_builder = ProbabilityBuilder(
+    secondary_builder = TransitionGenerator(
         states=secondary_states,
         transition_pairs=secondary_transition_pairs,
         special_transitions=secondary_special_transitions,
@@ -466,8 +468,6 @@ def on_demand_psa(n_samples: int, **kwargs):
     return inputs, results
 
 
-# TODO:
-# Update worker functions to work with new generic dynamic transition builder
 def prophylaxis_worker_function(abr, kwargs: dict):
     """
     Worker function to process a single abr value.
@@ -479,12 +479,69 @@ def prophylaxis_worker_function(abr, kwargs: dict):
     """
     abr = round(float(abr[0]))  # array to float
     ajbr = round(0.75 * abr)
-    builder = ProbabilityBuilder(abr=abr, ajbr=ajbr, annual_ltb_prob=0.0053)
-    transition = builder.get_matrix()
+    chains = kwargs["chains"]
+    primary_states = chains["primary"][0]
+    secondary_states = chains["secondary"][0]
+
+    # Define primary states transition pairs
+    primary_transition_pairs = {
+        ("Healthy", "Bleeding"): (abr / 52, "weekly"),
+        ("Healthy", "Hemarthrosis"): (ajbr / 52, "weekly"),
+        ("Bleeding", "Healthy"): (0.9, None),
+        ("Bleeding", "Death"): (0.05, None),
+        ("Hemarthrosis", "Healthy"): (0.8, None),
+        ("Hemarthrosis", "Arthropathy"): (0.0015, None),  # Placeholder value
+        ("Arthropathy", "Healthy"): (0.7, None),
+        ("Arthropathy", "Death"): (0.1, None),
+        ("LT_Bleeding", "Death"): (0.3, None),
+    }
+
+    # Define special transitions for absorbing states
+    primary_special_transitions = {
+        "Death": [0.0] * (len(primary_states) - 1) + [1.0],
+        "LT_Bleeding": [0.0] * (len(primary_states) - 2) + [0.7, 0.3],
+    }
+
+    # Define secondary states transition pairs
+    secondary_transition_pairs = {
+        ("Healthy", "Bleeding"): ((abr - ajbr) / 52, "weekly"),
+        ("Healthy", "Hemarthrosis"): (ajbr / 52, "weekly"),
+        ("Bleeding", "Healthy"): (0.9, None),
+        ("Bleeding", "Death"): (0.05, None),
+        ("Hemarthrosis", "Healthy"): (0.8, None),
+        ("LT_Bleeding", "Death"): (0.3, None),
+    }
+
+    secondary_special_transitions = {
+        "Death": [0.0] * (len(chains["secondary"][0]) - 1) + [1.0],
+        "LT_Bleeding": [0.0] * (len(secondary_states) - 2) + [0.7, 0.3],
+    }
+
+    # Initialize probability builders
+    primary_builder = TransitionGenerator(
+        states=primary_states,
+        transition_pairs=primary_transition_pairs,
+        special_transitions=primary_special_transitions,
+    )
+
+    secondary_builder = TransitionGenerator(
+        states=secondary_states,
+        transition_pairs=secondary_transition_pairs,
+        special_transitions=secondary_special_transitions,
+    )
+
+    # Define chains for MarkovChains
+    chains["primary"] = (primary_states, primary_builder.get_matrix())
+    chains["secondary"] = (secondary_states, secondary_builder.get_matrix())
+
+    # Drop previously assigned chains
+    kwargs.pop("chains")
+
+    # Initialize MarkovChains
     markov = MarkovChains(
-        transitions=transition,
-        lambda_bleeding=(abr - ajbr) / 52,  # PSA_KWARGS
-        lambda_joint_bleeding=ajbr / 52,  # PSA_KWARGS
+        chains=chains,
+        lambda_bleeding=(abr - ajbr) / 52,
+        lambda_joint_bleeding=ajbr / 52,
         **kwargs,
     )
     # Wrap utility_reward_function to track cumulative bleeds
@@ -603,7 +660,8 @@ def on_demand_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ):
     """Reward function that calculates factor viii consumption per bleed even per patient body weight over time."""
-    weight = cal_body_weight(step)
+    # starting treatment from age 2 yo
+    weight = cal_body_weight(step, b= 2 * 52)
     injected_dose = 0
     if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental
@@ -623,7 +681,8 @@ def prophylaxis_factor_consumption(
     """
     Reward function that calculates factor viii consumption per bleed even per patient body weight over time.
     """
-    weight = cal_body_weight(step)
+       # starting treatment from age 2 yo
+    weight = cal_body_weight(step, b= 2 * 52)
     injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
     if state.lower() == "bleeding":
         # Muscle | illopsoas | Renal | Oral mucosa and dental

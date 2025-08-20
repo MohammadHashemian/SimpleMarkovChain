@@ -33,7 +33,7 @@ def probability_at_least_one_event(
     return 1 - np.exp(-lambda_value)
 
 
-def cal_body_weight(week: int) -> float:
+def cal_body_weight(week: int, b: int = 0) -> float:
     """
     Estimates male body weight in kg using Gompertz growth model (0-50 years)
     and linear decline (50-73 years) based on WHO/CDC data.
@@ -46,6 +46,7 @@ def cal_body_weight(week: int) -> float:
 
     Args:
         week (int): Age in weeks (0 to 3796)
+        b (int): f(x0) = b
 
     Returns:
         float: Estimated weight in kg, rounded to 2 decimals
@@ -53,6 +54,7 @@ def cal_body_weight(week: int) -> float:
     Raises:
         TypeError: For invalid input
     """
+    week += b
     if not isinstance(week, int) or week < 0 or week > 3796:
         raise TypeError("Week must be an integer between 0 and 3796")
 
@@ -67,14 +69,13 @@ def cal_body_weight(week: int) -> float:
     else:
         # Linear decline from 50-73 years (80kg@2600wks → 75kg@3796wks)
         weight = 80.0 - (5.0 * (week - 2600) / (3796 - 2600))
-
     return round(weight, 2)
 
 
 def plot_body_weight():
     # Generate denser points
-    weeks = np.arange(0, 3797, 10)  # Every 10 weeks
-    weights = [cal_body_weight(int(w)) for w in weeks]
+    weeks = np.arange(0, 3640, 10)  # Every 10 weeks
+    weights = [cal_body_weight(int(w), b=2 * 52) for w in weeks]
 
     # Create the plot
     plt.figure(figsize=(10, 6))
@@ -107,7 +108,7 @@ if __name__ == "__main__":
 
 
 def remove_outliers(
-    df: pd.DataFrame, endog_col: str, exog_col: str, threshold_factor: float =4
+    df: pd.DataFrame, endog_col: str, exog_col: str, threshold_factor: float = 4
 ) -> pd.DataFrame:
     """
     Helper function to remove outliers, supports pandas dataframe
