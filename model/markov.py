@@ -635,28 +635,3 @@ def visualize_transition_matrix(
     plt.ylabel("Current State")
     plt.tight_layout()
     plt.savefig(f"{title}.png", dpi=300, bbox_inches="tight")
-
-
-@deprecated(
-    reason="Use TransitionGenerator instead of defining states and transition matrix inside excel without proper PSA",
-    action="ignore",
-)
-def load_matrix(
-    io: Path,
-    sheet_name: str,
-) -> tuple[str, list[str], np.ndarray]:
-    """
-    Load transition matrix from Excel file.
-
-    Args:
-        io: Path to Excel file
-        sheet_name: Sheet containing transition matrix
-
-    Returns:
-        tuple(start_state, states, transition)
-    """
-    df = pd.read_excel(io, sheet_name=sheet_name)
-    states = list(df.columns[1:-1])  # Exclude 'States' and 'SUM' columns
-    start_state = states[0]
-    transitions = df.drop(columns=["States", "SUM"]).to_numpy()
-    return (start_state, states, transitions)
