@@ -276,33 +276,7 @@ class TransitionGenerator:
         return matrix
 
 
-@deprecated(
-    reason="Use TransitionGenerator instead of defining states and transition matrix inside excel without proper PSA",
-    action="ignore",
-)
-def load_matrix(
-    io: Path,
-    sheet_name: str,
-) -> tuple[str, list[str], np.ndarray]:
-    """
-    Load transition matrix from Excel file.
-
-    Args:
-        io: Path to Excel file
-        sheet_name: Sheet containing transition matrix
-
-    Returns:
-        tuple(start_state, states, transition)
-    """
-    df = pd.read_excel(io, sheet_name=sheet_name)
-    states = list(df.columns[1:-1])  # Exclude 'States' and 'SUM' columns
-    start_state = states[0]
-    transitions = df.drop(columns=["States", "SUM"]).to_numpy()
-    return (start_state, states, transitions)
-
-def worker_function(
-    abr, kwargs: dict, treatment: Literal["on_demand", "prophylaxis"]
-):
+def worker_function(abr, kwargs: dict, treatment: Literal["on_demand", "prophylaxis"]):
     """
     Generic worker function for both on_demand and prophylaxis treatments.
 
@@ -338,10 +312,6 @@ def worker_function(
         ("Arthropathy", "Death"): (0, None),
         ("LT_Bleeding", "Death"): (0.2, None),
     }
-    primary_special_transitions = {
-        "Death": [0.0] * (len(primary_states) - 1) + [1.0],
-        "LT_Bleeding": [0.0] * (len(primary_states) - 2) + [0.7, 0.3],
-    }
 
     secondary_transition_pairs = {
         ("Healthy", "Bleeding"): ((abr - ajbr) / 52, "weekly"),
@@ -351,9 +321,16 @@ def worker_function(
         ("Hemarthrosis", "Healthy"): (no_bleeding_weeks, "annual"),
         ("LT_Bleeding", "Death"): (0.2, None),
     }
+
+    # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
+    primary_special_transitions = {
+        "Death": [0.0] * (len(primary_states) - 1) + [1.0],  # Absorbing
+        "LT_Bleeding": [0.8] + [0.0] * (len(primary_states) - 2) + [0.2],
+    }
+    # Secondary_states = ["Healthy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
     secondary_special_transitions = {
-        "Death": [0.0] * (len(secondary_states) - 1) + [1.0],
-        "LT_Bleeding": [0.0] * (len(secondary_states) - 2) + [0.7, 0.3],
+        "Death": [0.0] * (len(secondary_states) - 1) + [1.0],  # Absorbing
+        "LT_Bleeding": [0.8] + [0.0] * (len(secondary_states) - 2) + [0.2],
     }
 
     # ---- Build transition matrices ----
@@ -430,21 +407,28 @@ def worker_function(
     return input_dict, result_dict
 
 
-def on_demand_psa(n_samples: int, **kwargs):
+def psa_simulation(strategy: str, n_samples: int, **kwargs):
     """
-    Summary
-    -------
-    *_psa functions are wrappers around markov model, they add sampling for model inputs and runs the model
-    as multiprocess to boost simulating
+    Run PSA simulation for a given treatment strategy.
 
     Args:
+        strategy: Either "on_demand" or "prophylaxis"
         n_samples: Number of samples
-        **kwargs: MarkovChain keyword arguments except transitions as probability builder adds it to it
+        **kwargs: MarkovChain keyword arguments (except transitions)
+
     Returns:
         Tuple of (inputs, results) containing simulation inputs and outputs
     """
+    # Define ABR bounds depending on strategy
+    abr_bounds = {
+        "on_demand": [0, 44],
+        "prophylaxis": [0, 28],
+    }
+    if strategy not in abr_bounds:
+        raise ValueError(f"Unknown strategy: {strategy}")
+
     # Define the problem for sampling
-    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[0, 44]]}
+    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [abr_bounds[strategy]]}
     param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
 
     inputs = []
@@ -457,7 +441,7 @@ def on_demand_psa(n_samples: int, **kwargs):
 
     manager = enlighten.get_manager()
     progress_bar: enlighten.Counter = manager.counter(
-        total=len(param_samples), desc="Simulating on_demand:", unit="simulation"
+        total=len(param_samples), desc=f"Simulating {strategy}:", unit="simulation"
     )
 
     def update_bar(_):
@@ -466,58 +450,11 @@ def on_demand_psa(n_samples: int, **kwargs):
     with multiprocessing.Pool(processes=6) as pool:
         async_results = [
             pool.apply_async(
-                worker_function, args=(abr, kwargs, "on_demand"), callback=update_bar
+                worker_function, args=(abr, kwargs, strategy), callback=update_bar
             )
             for abr in param_samples
         ]
         # Collect results
-        for res in async_results:
-            input_dict, result_dict = res.get()
-            inputs.append(input_dict)
-            results["total_factors_use"].append(result_dict["total_factors_use"])
-            results["total_factors_costs"].append(result_dict["total_factors_costs"])
-            results["annual_factor_consumption"].append(
-                result_dict["annual_factor_consumption"]
-            )
-            results["QALYS"].append(result_dict["QALYS"])
-
-    manager.stop()
-    return inputs, results
-
-
-def prophylaxis_psa(n_samples: int, **kwargs):
-    """
-    Args:
-        n_samples: number of samples
-        **kwargs: MarkovChain keyword arguments
-    """
-    # Mean: 3.66
-    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [[0, 28]]}
-    param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
-    inputs = []
-    results = {
-        "total_factors_use": [],
-        "total_factors_costs": [],
-        "annual_factor_consumption": [],
-        "QALYS": [],
-    }  # Placeholder
-    manager = enlighten.get_manager()
-    progress_bar: enlighten.Counter = manager.counter(
-        total=len(param_samples), desc="Simulating prophylaxis:", unit="simulation"
-    )
-
-    def update_bar(_):
-        progress_bar.update(incr=1)
-
-    with multiprocessing.Pool(processes=6) as pool:
-        async_results = [
-            pool.apply_async(
-                func=worker_function,
-                args=(abr, kwargs, "prophylaxis"),
-                callback=update_bar,
-            )
-            for abr in param_samples
-        ]
         for res in async_results:
             input_dict, result_dict = res.get()
             inputs.append(input_dict)
@@ -671,3 +608,28 @@ def construct_utility_reward_function(
         return utility_value
 
     return utility_reward_function
+
+
+@deprecated(
+    reason="Use TransitionGenerator instead of defining states and transition matrix inside excel without proper PSA",
+    action="ignore",
+)
+def load_matrix(
+    io: Path,
+    sheet_name: str,
+) -> tuple[str, list[str], np.ndarray]:
+    """
+    Load transition matrix from Excel file.
+
+    Args:
+        io: Path to Excel file
+        sheet_name: Sheet containing transition matrix
+
+    Returns:
+        tuple(start_state, states, transition)
+    """
+    df = pd.read_excel(io, sheet_name=sheet_name)
+    states = list(df.columns[1:-1])  # Exclude 'States' and 'SUM' columns
+    start_state = states[0]
+    transitions = df.drop(columns=["States", "SUM"]).to_numpy()
+    return (start_state, states, transitions)
