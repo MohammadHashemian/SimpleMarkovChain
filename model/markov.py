@@ -1,5 +1,4 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
-from deprecated import deprecated
 from model import constants
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
@@ -8,7 +7,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import pandas as pd
 import multiprocessing
 import enlighten
 import math
@@ -298,10 +296,16 @@ def worker_function(
 
     for abr_value in abrs:
         abr = round(abr_value)
-        ajbr = round(0.75 * abr)
-        ltb_fraction = 0.045  # 4.5 percent of overall bleed events
+        ajbr = round(constants.AJBR_FRACTION * abr)
+        aebr = abr - ajbr
+        ltb_fraction = constants.LTB_FRACTION
         ltb = abr * ltb_fraction
         no_bleeding_weeks = 52 - abr
+
+        if no_bleeding_weeks < 0:
+            raise ValueError(
+                "Something went wrong, negative values are not assignable to no_bleeding_weeks"
+            )
 
         chains = kwargs["chains"]
         primary_states = chains["primary"][0]
@@ -309,25 +313,31 @@ def worker_function(
 
         # ---- Transition pairs (shared across both) ----
         primary_transition_pairs = {
-            ("Healthy", "Bleeding"): (abr, "annual"),
-            ("Healthy", "Hemarthrosis"): ((abr - ajbr), "annual"),
+            ("Healthy", "Bleeding"): (aebr, "annual"),
+            ("Healthy", "Hemarthrosis"): (ajbr, "annual"),
             ("Healthy", "LT_Bleeding"): (ltb, "annual"),
             ("Bleeding", "Healthy"): (no_bleeding_weeks, "annual"),
+            ("Bleeding", "LT_Bleeding"): (ltb, "annual"),
             ("Bleeding", "Death"): (0, None),
             ("Hemarthrosis", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("Hemarthrosis", "Arthropathy"): (0.0015, None),  # Placeholder
+            ("Hemarthrosis", "LT_Bleeding"): (ltb, "annual"),
+            ("Hemarthrosis", "Arthropathy"): (
+                constants.HEMARTHROSIS_TO_ARTHROPATHY,
+                None,
+            ),
             ("Arthropathy", "Healthy"): (0, None),
             ("Arthropathy", "Death"): (0, None),
-            ("LT_Bleeding", "Death"): (0.2, None),
         }
 
         secondary_transition_pairs = {
-            ("Healthy", "Bleeding"): ((abr - ajbr) / 52, "weekly"),
-            ("Healthy", "Hemarthrosis"): (ajbr / 52, "weekly"),
+            ("Healthy", "Bleeding"): (aebr, "annual"),
+            ("Healthy", "Hemarthrosis"): (ajbr, "annual"),
+            ("Healthy", "LT_Bleeding"): (ltb, "annual"),
             ("Bleeding", "Healthy"): (no_bleeding_weeks, "annual"),
+            ("Bleeding", "LT_Bleeding"): (ltb, "annual"),
             ("Bleeding", "Death"): (0, None),
             ("Hemarthrosis", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("LT_Bleeding", "Death"): (0.2, None),
+            ("Hemarthrosis", "LT_Bleeding"): (ltb, "annual"),
         }
 
         # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
@@ -367,15 +377,15 @@ def worker_function(
 
         # Select reward functions based on treatment
         if strategy == "on_demand":
-            factor_func = on_demand_factor_consumption
+            factor_func = on_demand_factor_consumption_wrapper
         elif strategy == "prophylaxis":
-            factor_func = prophylaxis_factor_consumption
+            factor_func = prophylaxis_factor_consumption_wrapper
         else:
             raise ValueError(f"Invalid treatment: {strategy}")
 
         markov.add_reward_function(factor_func)
         markov.add_reward_function(construct_utility_reward_function(strategy))
-        markov.run()
+        sequences = markov.run()
         rewards = markov.collect_rewards()
 
         # ---- Results ----
@@ -383,8 +393,8 @@ def worker_function(
         if not n_cycles or not isinstance(n_cycles, int):
             raise ValueError("Model number of steps not correctly defined for psa.")
 
-        input_dict = {"abr": abr, "ajbr": ajbr}
-        result_dict = {}
+        input_dict = {"abr": abr, "ajbr": ajbr, "chains": chains}
+        result_dict = {"sequences": sequences}
 
         total_factor_use = np.sum(rewards[factor_func.__name__][1:])
         total_utility_values = np.sum(rewards["utility_reward_function"][1:])
@@ -432,18 +442,25 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
     """
     # Define ABR bounds depending on strategy
     abr_bounds = {
-        "on_demand": [0, 44],
-        "prophylaxis": [0, 28],
-    }
+        "on_demand": [0, 44, 15 / 44],
+        "prophylaxis": [0, 28, 5 / 28],
+    }  # [lower, upper, peek in percentage]
     if strategy not in abr_bounds:
         raise ValueError(f"Unknown strategy: {strategy}")
-
     # Define the problem for sampling
-    problem = {"num_vars": 1, "names": ["ABR"], "bounds": [abr_bounds[strategy]]}
+    problem = {
+        "num_vars": 1,
+        "names": ["ABR"],
+        "bounds": [abr_bounds[strategy]],
+        "dists": ["triang"],
+    }
+    # NOTE:
+    # Alternative lognorm for smoother tail (mu. sigma)
     param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
 
     inputs = []
     results = {
+        "sequences": [],
         "total_factors_use": [],
         "total_factors_costs": [],
         "annual_factor_consumption": [],
@@ -469,6 +486,7 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
         for res in async_results:
             for input_dict, result_dict in res.get():
                 inputs.append(input_dict)
+                results["sequences"].append(result_dict["sequences"])
                 results["total_factors_use"].append(result_dict["total_factors_use"])
                 results["total_factors_costs"].append(
                     result_dict["total_factors_costs"]
@@ -508,46 +526,61 @@ def calculate_number_of_bleeds(state: str, **kwargs) -> int:
     return number_of_bleeds
 
 
-def on_demand_factor_consumption(
-    step: int, state: str, number_of_bleeds: int, **psa_kwargs
-):
-    """Reward function that calculates factor viii consumption per bleed even per patient body weight over time."""
-    # starting treatment from age 2 yo
-    weight = cal_body_weight(step, b=2 * 52)
-    injected_dose = 0
-    if state.lower() == "bleeding":
-        # Muscle | illopsoas | Renal | Oral mucosa and dental
-        injected_dose = round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
-    elif state.lower() == "joint_bleeding":
-        # Joint
-        injected_dose = round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
-    elif state.lower() == "lt_bleeding":
-        # Intra_cranial | Gastro | Neck & throat
-        injected_dose = round(weight * constants.LT_BLEEDING_DOSE)
-    return injected_dose
-
-
-def prophylaxis_factor_consumption(
-    step: int, state: str, number_of_bleeds: int, **psa_kwargs
+def factor_consumption(
+    step: int,
+    state: str,
+    number_of_bleeds: int,
+    strategy: Literal["on_demand", "prophylaxis"],
+    **psa_kwargs,
 ) -> int:
     """
-    Reward function that calculates factor viii consumption per bleed even per patient body weight over time.
+    Reward function that calculates factor VIII consumption per patient body weight over time.
+
+    Args:
+        step (int): Current Markov cycle step (weeks).
+        state (str): Current patient state (e.g., bleeding, joint_bleeding, lt_bleeding).
+        number_of_bleeds (int): Number of bleeding events in this step.
+        mode (str): Either 'on_demand' or 'prophylaxis'.
+
+    Returns:
+        int: Total factor VIII consumption (IU).
     """
     # starting treatment from age 2 yo
-    weight = cal_body_weight(step, b=2 * 52)
-    injected_dose = round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
-    if state.lower() == "bleeding":
-        # Muscle | illopsoas | Renal | Oral mucosa and dental
+    weight = cal_body_weight(step, b=constants.START_SIMULATION_AGE_IN_WEEK)
+    injected_dose = 0
+
+    # Add prophylaxis baseline if applicable
+    if strategy.lower() == "prophylaxis":
+        injected_dose += round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
+
+    # Bleeding-related consumption
+    state_lower = state.lower()
+    if state_lower == "bleeding":
         injected_dose += round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
-    elif state.lower() == "joint_bleeding":
-        # Joint
+    elif state_lower == "joint_bleeding":
         injected_dose += (
             round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
         )
-    elif state.lower() == "lt_bleeding":
-        # Intra_cranial | Gastro | Neck & throat
+    elif state_lower == "lt_bleeding":
         injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
+
     return injected_dose
+
+
+def on_demand_factor_consumption_wrapper(
+    step: int, state: str, number_of_bleeds: int, **psa_kwargs
+):
+    return factor_consumption(
+        step, state, number_of_bleeds, strategy="on_demand", **psa_kwargs
+    )
+
+
+def prophylaxis_factor_consumption_wrapper(
+    step: int, state: str, number_of_bleeds: int, **psa_kwargs
+) -> int:
+    return factor_consumption(
+        step, state, number_of_bleeds, strategy="prophylaxis", **psa_kwargs
+    )
 
 
 def construct_utility_reward_function(
@@ -560,8 +593,9 @@ def construct_utility_reward_function(
     bleeds_count = [0]  # closure mutable container
 
     # --- Configuration ---
+    # same or different base utility? 0.85, 0.915
     base_utilities = {
-        "on_demand": {"healthy": 0.85},
+        "on_demand": {"healthy": 0.915},
         "prophylaxis": {"healthy": 0.915},
     }
 
@@ -574,6 +608,7 @@ def construct_utility_reward_function(
         "death": 0.0,
     }
 
+    # Placeholder values
     decrement_per_bleed = {
         "on_demand": 0.0003725,
         "prophylaxis": 0.0018,
@@ -599,7 +634,7 @@ def construct_utility_reward_function(
             decrement = (
                 decrement_per_bleed * bleeds_count[0] if decrement_utility else 0
             )
-            adjusted_u = max(0.65, base_u - decrement)
+            adjusted_u = max(0.65, base_u - decrement) if decrement_utility else base_u
             utility = adjusted_u
         else:
             utility = state_utilities.get(state_lower, 0.0)
@@ -625,7 +660,7 @@ def visualize_transition_matrix(
     sns.heatmap(
         matrix,
         annot=True,
-        fmt=".2f",
+        fmt=".4f",
         xticklabels=states,
         yticklabels=states,
         cmap="Blues",
@@ -634,4 +669,8 @@ def visualize_transition_matrix(
     plt.xlabel("Next State")
     plt.ylabel("Current State")
     plt.tight_layout()
-    plt.savefig(f"{title}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(
+        PROJECT_ROOT / "outputs" / "figures" / "transitions" / f"{title}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
