@@ -91,7 +91,7 @@ class MarkovChains:
 
         # Rewards for initial state
         if self.reward_functions:
-            bleeds_count = calculate_number_of_bleeds(
+            bleeds_count = count_bleeds_poisson(
                 state=states[current_state_idx], **self.psa_kwargs
             )
             for func in self.reward_functions:
@@ -131,7 +131,7 @@ class MarkovChains:
 
             # Rewards
             if self.reward_functions:
-                bleeds_count = calculate_number_of_bleeds(
+                bleeds_count = count_bleeds_poisson(
                     state=states[current_state_idx], **self.psa_kwargs
                 )
                 for func in self.reward_functions:
@@ -279,153 +279,139 @@ class TransitionGenerator:
 
 
 def worker_function(
-    abrs: np.ndarray, kwargs: dict, strategy: Literal["on_demand", "prophylaxis"]
+    abr: float, kwargs: dict, strategy: Literal["on_demand", "prophylaxis"]
 ):
     """
-    Generic worker function for both on_demand and prophylaxis treatment strategy.
+    Worker function for simulating Markov chains for a given ABR and strategy.
 
     Args:
-        abrs: Input array of ABR values (multiple samples per iteration)
-        kwargs: MarkovChains keyword arguments
-        strategy: "on_demand" or "prophylaxis"
+        abr: Annual bleeding rate (ABR).
+        kwargs: MarkovChains keyword arguments.
+        strategy: "on_demand" or "prophylaxis".
 
     Returns:
-        List of (input_dict, result_dict) tuples, one per ABR value.
+        Tuple of (input_dict, result_dict) containing simulation inputs and outputs.
     """
-    results = []
+    abr = round(abr)
+    weekly_bleeding_rate = abr / 52.0
+    weekly_ajbr_rate = (constants.AJBR_FRACTION * abr) / 52.0  # Weekly joint bleeding rate
+    weekly_aebr_rate = weekly_bleeding_rate - weekly_ajbr_rate  # Weekly non-joint bleeding rate
+    weekly_ltb_rate = (constants.LTB_FRACTION * abr) / 52.0  # Weekly life-threatening bleeding rate
+    
+    # Ensure non-negative probability for staying in Healthy state
+    no_bleeding_weeks_pro = max(0, 1 - weekly_aebr_rate - weekly_ajbr_rate - weekly_ltb_rate)
 
-    for abr_value in abrs:
-        abr = round(abr_value)
-        ajbr = round(constants.AJBR_FRACTION * abr)
-        aebr = abr - ajbr
-        ltb_fraction = constants.LTB_FRACTION
-        ltb = abr * ltb_fraction
-        no_bleeding_weeks = 52 - abr
+    chains = kwargs["chains"]
+    primary_states = chains["primary"][0]
+    secondary_states = chains["secondary"][0]
 
-        if no_bleeding_weeks < 0:
-            raise ValueError(
-                "Something went wrong, negative values are not assignable to no_bleeding_weeks"
-            )
+    # ---- Transition pairs (shared across both) ----
+    primary_transition_pairs = {
+        ("Healthy", "Bleeding"): (weekly_aebr_rate, "weekly"),
+        ("Healthy", "Hemarthrosis"): (weekly_ajbr_rate, "weekly"),
+        ("Healthy", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+        ("Bleeding", "Healthy"): (no_bleeding_weeks_pro, None),
+        ("Bleeding", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+        ("Bleeding", "Death"): (0, None),
+        ("Hemarthrosis", "Healthy"): (no_bleeding_weeks_pro, None),
+        ("Hemarthrosis", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+        ("Hemarthrosis", "Arthropathy"): (
+            constants.HEMARTHROSIS_TO_ARTHROPATHY,
+            None,
+        ),
+        ("Arthropathy", "Healthy"): (0, None),
+        ("Arthropathy", "Death"): (0, None),
+    }
 
-        chains = kwargs["chains"]
-        primary_states = chains["primary"][0]
-        secondary_states = chains["secondary"][0]
+    secondary_transition_pairs = {
+        ("Healthy", "Bleeding"): (weekly_aebr_rate, "weekly"),
+        ("Healthy", "Hemarthrosis"): (weekly_ajbr_rate, "weekly"),
+        ("Healthy", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+        ("Bleeding", "Healthy"): (no_bleeding_weeks_pro, None),
+        ("Bleeding", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+        ("Bleeding", "Death"): (0, None),
+        ("Hemarthrosis", "Healthy"): (no_bleeding_weeks_pro, None),
+        ("Hemarthrosis", "LT_Bleeding"): (weekly_ltb_rate, "weekly"),
+    }
 
-        # ---- Transition pairs (shared across both) ----
-        primary_transition_pairs = {
-            ("Healthy", "Bleeding"): (aebr, "annual"),
-            ("Healthy", "Hemarthrosis"): (ajbr, "annual"),
-            ("Healthy", "LT_Bleeding"): (ltb, "annual"),
-            ("Bleeding", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("Bleeding", "LT_Bleeding"): (ltb, "annual"),
-            ("Bleeding", "Death"): (0, None),
-            ("Hemarthrosis", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("Hemarthrosis", "LT_Bleeding"): (ltb, "annual"),
-            ("Hemarthrosis", "Arthropathy"): (
-                constants.HEMARTHROSIS_TO_ARTHROPATHY,
-                None,
-            ),
-            ("Arthropathy", "Healthy"): (0, None),
-            ("Arthropathy", "Death"): (0, None),
-        }
+    # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
+    primary_special_transitions = {
+        "Death": [0.0] * (len(primary_states) - 1) + [1.0],  # Absorbing
+        "LT_Bleeding": [0.8] + [0.0] * (len(primary_states) - 2) + [0.2],
+    }
+    secondary_special_transitions = {
+        "Death": [0.0] * (len(secondary_states) - 1) + [1.0],  # Absorbing
+        "LT_Bleeding": [0.8] + [0.0] * (len(secondary_states) - 2) + [0.2],
+    }
 
-        secondary_transition_pairs = {
-            ("Healthy", "Bleeding"): (aebr, "annual"),
-            ("Healthy", "Hemarthrosis"): (ajbr, "annual"),
-            ("Healthy", "LT_Bleeding"): (ltb, "annual"),
-            ("Bleeding", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("Bleeding", "LT_Bleeding"): (ltb, "annual"),
-            ("Bleeding", "Death"): (0, None),
-            ("Hemarthrosis", "Healthy"): (no_bleeding_weeks, "annual"),
-            ("Hemarthrosis", "LT_Bleeding"): (ltb, "annual"),
-        }
+    # ---- Build transition matrices ----
+    primary_builder = TransitionGenerator(
+        states=primary_states,
+        transition_pairs=primary_transition_pairs,
+        special_transitions=primary_special_transitions,
+    )
+    secondary_builder = TransitionGenerator(
+        states=secondary_states,
+        transition_pairs=secondary_transition_pairs,
+        special_transitions=secondary_special_transitions,
+    )
+    chains["primary"] = (primary_states, primary_builder.get_matrix())
+    chains["secondary"] = (secondary_states, secondary_builder.get_matrix())
 
-        # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
-        primary_special_transitions = {
-            "Death": [0.0] * (len(primary_states) - 1) + [1.0],  # Absorbing
-            "LT_Bleeding": [0.8] + [0.0] * (len(primary_states) - 2) + [0.2],
-        }
-        # Secondary_states = ["Healthy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
-        secondary_special_transitions = {
-            "Death": [0.0] * (len(secondary_states) - 1) + [1.0],  # Absorbing
-            "LT_Bleeding": [0.8] + [0.0] * (len(secondary_states) - 2) + [0.2],
-        }
+    # ---- Markov model setup ----
+    markov = MarkovChains(
+        chains=chains,
+        lambda_bleeding=weekly_aebr_rate,  # Corrected: Weekly non-joint bleeding rate
+        lambda_joint_bleeding=weekly_ajbr_rate,  # Corrected: Weekly joint bleeding rate
+        **{k: v for k, v in kwargs.items() if k != "chains"},
+    )
 
-        # ---- Build transition matrices ----
-        primary_builder = TransitionGenerator(
-            states=primary_states,
-            transition_pairs=primary_transition_pairs,
-            special_transitions=primary_special_transitions,
+    # Select reward functions based on treatment
+    if strategy == "on_demand":
+        factor_func = on_demand_factor_consumption_wrapper
+    elif strategy == "prophylaxis":
+        factor_func = prophylaxis_factor_consumption_wrapper
+    else:
+        raise ValueError(f"Invalid treatment: {strategy}")
+
+    markov.add_reward_function(factor_func)
+    markov.add_reward_function(construct_utility_reward_function(strategy))
+    sequences = markov.run()
+    rewards = markov.collect_rewards()
+
+    # ---- Results ----
+    n_cycles = kwargs.get("steps")
+    if not n_cycles or not isinstance(n_cycles, int):
+        raise ValueError("Model number of steps not correctly defined for psa.")
+
+    input_dict = {"abr": abr, "ajbr": weekly_ajbr_rate, "chains": chains}
+    result_dict = {"sequences": sequences}
+
+    total_factor_use = np.sum(rewards[factor_func.__name__][1:])
+    total_utility_values = np.sum(rewards["utility_reward_function"][1:])
+    factor_consumption_list: list = rewards[factor_func.__name__][1:]
+
+    # Costs (corrected for consistent discounting and currency conversion)
+    factor_costs = [
+        (
+            dose
+            * constants.PRICE_PER_UI_FACTOR_VIII
+            / constants.PPP_CONVERSION_FACTOR  # Use PPP for consistency
         )
-        secondary_builder = TransitionGenerator(
-            states=secondary_states,
-            transition_pairs=secondary_transition_pairs,
-            special_transitions=secondary_special_transitions,
-        )
-        chains["primary"] = (primary_states, primary_builder.get_matrix())
-        chains["secondary"] = (secondary_states, secondary_builder.get_matrix())
+        / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+        if constants.DISCOUNT_RATE_WEEKLY
+        else dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.PPP_CONVERSION_FACTOR
+        for i, dose in enumerate(factor_consumption_list)
+    ]
 
-        # ---- Markov model setup ----
-        markov = MarkovChains(
-            chains=chains,
-            lambda_bleeding=(abr - ajbr) / 52,
-            lambda_joint_bleeding=ajbr / 52,
-            **{
-                k: v for k, v in kwargs.items() if k != "chains"
-            },  # avoid mutating kwargs
-        )
+    # Store aggregated results (annualized correctly)
+    result_dict["total_factors_use"] = total_factor_use
+    result_dict["total_factors_costs"] = np.sum(factor_costs)
+    result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52.0)
+    result_dict["annual_factor_costs"] = np.sum(factor_costs) / (n_cycles / 52.0)
+    result_dict["QALYS"] = total_utility_values / (n_cycles / 52.0)  # Annualized QALYs
 
-        # Select reward functions based on treatment
-        if strategy == "on_demand":
-            factor_func = on_demand_factor_consumption_wrapper
-        elif strategy == "prophylaxis":
-            factor_func = prophylaxis_factor_consumption_wrapper
-        else:
-            raise ValueError(f"Invalid treatment: {strategy}")
-
-        markov.add_reward_function(factor_func)
-        markov.add_reward_function(construct_utility_reward_function(strategy))
-        sequences = markov.run()
-        rewards = markov.collect_rewards()
-
-        # ---- Results ----
-        n_cycles = kwargs.get("steps")
-        if not n_cycles or not isinstance(n_cycles, int):
-            raise ValueError("Model number of steps not correctly defined for psa.")
-
-        input_dict = {"abr": abr, "ajbr": ajbr, "chains": chains}
-        result_dict = {"sequences": sequences}
-
-        total_factor_use = np.sum(rewards[factor_func.__name__][1:])
-        total_utility_values = np.sum(rewards["utility_reward_function"][1:])
-        factor_consumption_list: list = rewards[factor_func.__name__][1:]
-
-        # Costs
-        if constants.DISCOUNT_RATE_WEEKLY:
-            factor_costs = [
-                (
-                    dose
-                    * constants.PRICE_PER_UI_FACTOR_VIII
-                    / constants.PPP_CONVERSION_FACTOR
-                )
-                / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
-                for i, dose in enumerate(factor_consumption_list)
-            ]
-        else:
-            factor_costs = [
-                dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.RIAL_USD_PRICE
-                for dose in factor_consumption_list
-            ]
-
-        # Store aggregated results
-        result_dict["total_factors_use"] = total_factor_use
-        result_dict["total_factors_costs"] = np.sum(factor_costs) / (n_cycles / 52)
-        result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52)
-        result_dict["QALYS"] = total_utility_values
-
-        results.append((input_dict, result_dict))
-
-    return results
+    return (input_dict, result_dict)
 
 
 def psa_simulation(strategy: str, n_samples: int, **kwargs):
@@ -433,30 +419,86 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
     Run PSA simulation for a given treatment strategy.
 
     Args:
-        strategy: Either "on_demand" or "prophylaxis"
-        n_samples: Number of samples
-        **kwargs: MarkovChain keyword arguments (except transitions)
+        strategy: Either "on_demand" or "prophylaxis".
+        n_samples: Number of samples.
+        **kwargs: MarkovChain keyword arguments (except transitions).
 
     Returns:
-        Tuple of (inputs, results) containing simulation inputs and outputs
+        Tuple of (inputs, results) containing simulation inputs and outputs.
     """
-    # Define ABR bounds depending on strategy
-    abr_bounds = {
-        "on_demand": [0, 44, 15 / 44],
-        "prophylaxis": [0, 28, 5 / 28],
-    }  # [lower, upper, peek in percentage]
-    if strategy not in abr_bounds:
-        raise ValueError(f"Unknown strategy: {strategy}")
-    # Define the problem for sampling
+    # Study data for ABR (Mean, SD)
+    on_demand_abr = np.array(
+        [
+            [58.3, 26.9],  # Zhao et al.
+            [37.2, 19.9],  # Manco-Johnson MJ et al.
+            [19.5, 15.0],  # Tagliaferri A et al.
+            [17.7, 11.7],  # Tagliaferri A et al.
+            [13, 0],  # Gringeri A et al.
+            [7.4, 9.5],  # Romanová G et al.
+            [13.2, 12.43],  # Berntorp E et al.
+            [14.0, 12.3],  # Khair K et al.
+            [18.4, 14.2],  # Khair K et al.
+            [15.8, 8.13],  # Khair K et al.
+        ]
+    )
+    prophylaxis_abr = np.array(
+        [
+            [2.5, 4.6],  # Zhao et al.
+            [2.5, 4.7],  # Manco-Johnson MJ et al.
+            [2.6, 2.2],  # Tagliaferri A et al.
+            [4.5, 7.1],  # Tagliaferri A et al.
+            [6.3, 0],  # Gringeri A et al.
+            [2.1, 2.1],  # Romanová G et al.
+            [4.26, 5.97],  # Berntorp E et al.
+            [3.5, 4.3],  # Khair K et al.
+            [3.3, 4.1],  # Khair K et al.
+            [3.7, 3.9],  # Khair K et al.
+        ]
+    )
+    study_data = on_demand_abr if strategy == "on_demand" else prophylaxis_abr
+    num_studies = study_data.shape[0]
+
     problem = {
-        "num_vars": 1,
-        "names": ["ABR"],
-        "bounds": [abr_bounds[strategy]],
-        "dists": ["triang"],
+        "num_vars": num_studies,
+        "names": [f"study_{i}_weight" for i in range(num_studies)],
+        "bounds": [[0, 1]] * num_studies,
     }
-    # NOTE:
-    # Alternative lognorm for smoother tail (mu. sigma)
-    param_samples = saltelli.sample(problem, n_samples, calc_second_order=False)
+    param_samples = saltelli.sample(problem, n_samples, calc_second_order=True)
+
+    def weights_to_abr(weights):
+        """Convert study weights to an ABR value using Gamma distribution sampling."""
+        weights = np.array(weights)
+        probabilities = np.exp(weights) / np.sum(np.exp(weights))
+        chosen_study_idx = np.random.choice(range(num_studies), p=probabilities)
+        mu, sigma = study_data[chosen_study_idx]
+
+        if sigma <= 0 or np.isnan(sigma):
+            return max(0, mu)  # Ensure non-negative ABR
+
+        k = (mu / sigma) ** 2
+        theta = (sigma**2) / mu
+
+        if k <= 0 or theta <= 0 or np.isnan(k) or np.isnan(theta):
+            return max(0, mu)
+
+        return max(0, np.random.gamma(k, theta))
+
+    abr_values = np.array([weights_to_abr(params) for params in param_samples])
+
+    # TODO:
+    # Move it to notebook
+    # Plot ABR distribution
+    plt.figure(figsize=(8, 6))
+    sns.histplot(abr_values, bins=30, kde=True, color="blue" if strategy == "on_demand" else "green")
+    plt.title(f"ABR Distribution for {strategy.capitalize()} Strategy")
+    plt.xlabel("Annual Bleeding Rate (ABR)")
+    plt.ylabel("Frequency")
+    plt.savefig(
+        PROJECT_ROOT / "outputs" / "figures" / f"abr_distribution_{strategy}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
 
     inputs = []
     results = {
@@ -464,11 +506,12 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
         "total_factors_use": [],
         "total_factors_costs": [],
         "annual_factor_consumption": [],
+        "annual_factor_costs": [],
         "QALYS": [],
     }
 
     manager = enlighten.get_manager()
-    progress_bar: enlighten.Counter = manager.counter(
+    progress_bar = manager.counter(
         total=len(param_samples), desc=f"Simulating {strategy}:", unit="simulation"
     )
 
@@ -480,27 +523,18 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
             pool.apply_async(
                 worker_function, args=(abr, kwargs, strategy), callback=update_bar
             )
-            for abr in param_samples
+            for abr in abr_values
         ]
-        # Collect results
         for res in async_results:
-            for input_dict, result_dict in res.get():
-                inputs.append(input_dict)
-                results["sequences"].append(result_dict["sequences"])
-                results["total_factors_use"].append(result_dict["total_factors_use"])
-                results["total_factors_costs"].append(
-                    result_dict["total_factors_costs"]
-                )
-                results["annual_factor_consumption"].append(
-                    result_dict["annual_factor_consumption"]
-                )
-                results["QALYS"].append(result_dict["QALYS"])
+            input_dict, result_dict = res.get()
+            inputs.append(input_dict)
+            for key in results:
+                results[key].append(result_dict[key])
 
     manager.stop()
     return inputs, results
 
-
-def calculate_number_of_bleeds(state: str, **kwargs) -> int:
+def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
     # Conditional probability formula
     def conditional_probs(k: int, l: float):
         return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
@@ -524,6 +558,37 @@ def calculate_number_of_bleeds(state: str, **kwargs) -> int:
         events_probs = [p / sum(events_probs) for p in events_probs]
         number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
     return number_of_bleeds
+
+def count_bleeds_poisson(state: str, **kwargs) -> int:
+    """
+    Calculate the number of bleeding events in a given state using a Poisson distribution.
+
+    Args:
+        state (str): Current patient state (e.g., 'Bleeding', 'Joint_Bleeding').
+        **kwargs: Additional parameters, including 'lambda_bleeding' and 'lambda_joint_bleeding'.
+
+    Returns:
+        int: Number of bleeding events (0 or more).
+    """
+    # Get lambda value based on state
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+
+    if lambda_value is None or not isinstance(lambda_value, (int, float)) or lambda_value < 0:
+        raise ValueError(f"Invalid lambda value for state {state}: {lambda_value}")
+
+    if lambda_value == 0:
+        return 0
+
+    # Sample from Poisson distribution (includes zero events)
+    return np.random.poisson(lambda_value)
 
 
 def factor_consumption(
@@ -550,19 +615,22 @@ def factor_consumption(
     injected_dose = 0
 
     # Add prophylaxis baseline if applicable
-    if strategy.lower() == "prophylaxis":
-        injected_dose += round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
+    injected_dose += (
+        round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
+        if strategy.lower() == "prophylaxis"
+        else 0
+    )
 
     # Bleeding-related consumption
-    state_lower = state.lower()
-    if state_lower == "bleeding":
-        injected_dose += round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
-    elif state_lower == "joint_bleeding":
-        injected_dose += (
-            round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
-        )
-    elif state_lower == "lt_bleeding":
-        injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
+    match state.lower():
+        case "bleeding":
+            injected_dose += round(weight * constants.BLEEDING_DOSE) * number_of_bleeds
+        case "joint_bleeding":
+            injected_dose += (
+                round(weight * constants.JOINT_BLEEDING_DOSE) * number_of_bleeds
+            )
+        case "lt_bleeding":
+            injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
 
     return injected_dose
 
