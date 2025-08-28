@@ -1,4 +1,5 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
+from dataclasses import dataclass
 from model import constants
 from model.utils import cal_body_weight
 from model.utils import probability_at_least_one_event
@@ -13,6 +14,16 @@ import math
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@dataclass
+class MarkovResults:
+    sequences: list
+    total_factor_use: float
+    total_factor_costs: float
+    annual_factor_consumption: float
+    annual_factor_costs: float
+    qaly: float
 
 
 class MarkovChains:
@@ -294,12 +305,20 @@ def worker_function(
     """
     abr = round(abr)
     weekly_bleeding_rate = abr / 52.0
-    weekly_ajbr_rate = (constants.AJBR_FRACTION * abr) / 52.0  # Weekly joint bleeding rate
-    weekly_aebr_rate = weekly_bleeding_rate - weekly_ajbr_rate  # Weekly non-joint bleeding rate
-    weekly_ltb_rate = (constants.LTB_FRACTION * abr) / 52.0  # Weekly life-threatening bleeding rate
-    
+    weekly_ajbr_rate = (
+        constants.AJBR_FRACTION * abr
+    ) / 52.0  # Weekly joint bleeding rate
+    weekly_aebr_rate = (
+        weekly_bleeding_rate - weekly_ajbr_rate
+    )  # Weekly non-joint bleeding rate
+    weekly_ltb_rate = (
+        constants.LTB_FRACTION * abr
+    ) / 52.0  # Weekly life-threatening bleeding rate
+
     # Ensure non-negative probability for staying in Healthy state
-    no_bleeding_weeks_pro = max(0, 1 - weekly_aebr_rate - weekly_ajbr_rate - weekly_ltb_rate)
+    no_bleeding_weeks_pro = max(
+        0, 1 - weekly_aebr_rate - weekly_ajbr_rate - weekly_ltb_rate
+    )
 
     chains = kwargs["chains"]
     primary_states = chains["primary"][0]
@@ -384,37 +403,44 @@ def worker_function(
     if not n_cycles or not isinstance(n_cycles, int):
         raise ValueError("Model number of steps not correctly defined for psa.")
 
-    input_dict = {"abr": abr, "ajbr": weekly_ajbr_rate, "chains": chains}
-    result_dict = {"sequences": sequences}
+    inputs = {"abr": abr, "ajbr": weekly_ajbr_rate * 52, "chains": chains}
 
+    _utility_func_name = construct_utility_reward_function.__name__.removeprefix(
+        "construct_"
+    )
     total_factor_use = np.sum(rewards[factor_func.__name__][1:])
-    total_utility_values = np.sum(rewards["utility_reward_function"][1:])
+    total_utility_values = np.sum(rewards[_utility_func_name][1:])
     factor_consumption_list: list = rewards[factor_func.__name__][1:]
-
     # Costs (corrected for consistent discounting and currency conversion)
     factor_costs = [
         (
-            dose
+            (
+                dose
+                * constants.PRICE_PER_UI_FACTOR_VIII
+                / constants.PPP_CONVERSION_FACTOR  # Use PPP for consistency
+            )
+            / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
+            if constants.DISCOUNT_RATE_WEEKLY
+            else dose
             * constants.PRICE_PER_UI_FACTOR_VIII
-            / constants.PPP_CONVERSION_FACTOR  # Use PPP for consistency
+            / constants.PPP_CONVERSION_FACTOR
         )
-        / (1 + constants.DISCOUNT_RATE_WEEKLY) ** i
-        if constants.DISCOUNT_RATE_WEEKLY
-        else dose * constants.PRICE_PER_UI_FACTOR_VIII / constants.PPP_CONVERSION_FACTOR
         for i, dose in enumerate(factor_consumption_list)
     ]
 
-    # Store aggregated results (annualized correctly)
-    result_dict["total_factors_use"] = total_factor_use
-    result_dict["total_factors_costs"] = np.sum(factor_costs)
-    result_dict["annual_factor_consumption"] = total_factor_use / (n_cycles / 52.0)
-    result_dict["annual_factor_costs"] = np.sum(factor_costs) / (n_cycles / 52.0)
-    result_dict["QALYS"] = total_utility_values / (n_cycles / 52.0)  # Annualized QALYs
+    # Store aggregated results
+    res = MarkovResults(
+        total_factor_use=total_factor_use,
+        total_factor_costs=np.sum(factor_costs),
+        annual_factor_consumption=total_factor_use / (n_cycles / 52.0),
+        annual_factor_costs=np.sum(factor_costs) / (n_cycles / 52.0),
+        qaly=total_utility_values,
+        sequences=sequences,
+    )
+    return (inputs, res)
 
-    return (input_dict, result_dict)
 
-
-def psa_simulation(strategy: str, n_samples: int, **kwargs):
+def psa_simulation(strategy: str, n_samples: int, **kwargs) -> tuple[list, list[MarkovResults]]:
     """
     Run PSA simulation for a given treatment strategy.
 
@@ -483,32 +509,12 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
 
         return max(0, np.random.gamma(k, theta))
 
+    # ---- Debug ----
     abr_values = np.array([weights_to_abr(params) for params in param_samples])
-
-    # TODO:
-    # Move it to notebook
-    # Plot ABR distribution
-    plt.figure(figsize=(8, 6))
-    sns.histplot(abr_values, bins=30, kde=True, color="blue" if strategy == "on_demand" else "green")
-    plt.title(f"ABR Distribution for {strategy.capitalize()} Strategy")
-    plt.xlabel("Annual Bleeding Rate (ABR)")
-    plt.ylabel("Frequency")
-    plt.savefig(
-        PROJECT_ROOT / "outputs" / "figures" / f"abr_distribution_{strategy}.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
+    visualize_abr(abr_values, strategy)
 
     inputs = []
-    results = {
-        "sequences": [],
-        "total_factors_use": [],
-        "total_factors_costs": [],
-        "annual_factor_consumption": [],
-        "annual_factor_costs": [],
-        "QALYS": [],
-    }
+    results = []
 
     manager = enlighten.get_manager()
     progress_bar = manager.counter(
@@ -526,69 +532,11 @@ def psa_simulation(strategy: str, n_samples: int, **kwargs):
             for abr in abr_values
         ]
         for res in async_results:
-            input_dict, result_dict = res.get()
+            input_dict, res = res.get()
             inputs.append(input_dict)
-            for key in results:
-                results[key].append(result_dict[key])
-
+            results.append(res)
     manager.stop()
     return inputs, results
-
-def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
-    # Conditional probability formula
-    def conditional_probs(k: int, l: float):
-        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
-
-    # Get lambda_value from kwargs
-    lambda_value = (
-        kwargs.get("lambda_bleeding")
-        if state.lower() == "bleeding"
-        else (
-            kwargs.get("lambda_joint_bleeding")
-            if state.lower() == "joint_bleeding"
-            else 0
-        )
-    )
-    number_of_bleeds = 1
-    if lambda_value != 0:
-        if not isinstance(lambda_value, float):
-            raise TypeError("No valid lambda value provided.")
-        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
-        # Normalizing
-        events_probs = [p / sum(events_probs) for p in events_probs]
-        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
-    return number_of_bleeds
-
-def count_bleeds_poisson(state: str, **kwargs) -> int:
-    """
-    Calculate the number of bleeding events in a given state using a Poisson distribution.
-
-    Args:
-        state (str): Current patient state (e.g., 'Bleeding', 'Joint_Bleeding').
-        **kwargs: Additional parameters, including 'lambda_bleeding' and 'lambda_joint_bleeding'.
-
-    Returns:
-        int: Number of bleeding events (0 or more).
-    """
-    # Get lambda value based on state
-    lambda_value = (
-        kwargs.get("lambda_bleeding")
-        if state.lower() == "bleeding"
-        else (
-            kwargs.get("lambda_joint_bleeding")
-            if state.lower() == "joint_bleeding"
-            else 0
-        )
-    )
-
-    if lambda_value is None or not isinstance(lambda_value, (int, float)) or lambda_value < 0:
-        raise ValueError(f"Invalid lambda value for state {state}: {lambda_value}")
-
-    if lambda_value == 0:
-        return 0
-
-    # Sample from Poisson distribution (includes zero events)
-    return np.random.poisson(lambda_value)
 
 
 def factor_consumption(
@@ -653,7 +601,7 @@ def prophylaxis_factor_consumption_wrapper(
 
 def construct_utility_reward_function(
     treatment: Literal["on_demand", "prophylaxis"], decrement_utility: bool = False
-) -> Callable[[int, str], float]:
+) -> Callable[[int, str, int], float]:
     """
     Factory function to create a utility reward function.
     Tracks bleeds and applies discounting or utility decrement
@@ -661,6 +609,7 @@ def construct_utility_reward_function(
     bleeds_count = [0]  # closure mutable container
 
     # --- Configuration ---
+    # NOTE
     # same or different base utility? 0.85, 0.915
     base_utilities = {
         "on_demand": {"healthy": 0.915},
@@ -671,7 +620,7 @@ def construct_utility_reward_function(
     state_utilities = {
         "arthropathy": 0.75,
         "bleeding": 0.60,
-        "joint_bleeding": 0.50,
+        "hemarthrosis": 0.50,
         "lt_bleeding": 0.25,
         "death": 0.0,
     }
@@ -688,14 +637,16 @@ def construct_utility_reward_function(
             return value / (1 + constants.DISCOUNT_RATE_WEEKLY) ** step
         return value
 
-    def utility_reward_function(step: int, state: str, **kwargs) -> float:
+    def utility_reward_function(
+        step: int, state: str, number_of_bleeds: int, **kwargs
+    ) -> float:
         """Returns utility values for each health state with event-based decay for healthy state."""
         nonlocal bleeds_count
         state_lower = state.lower()
 
         # Increment cumulative bleeds based on the state at this step
-        if state_lower in ["bleeding", "joint_bleeding"]:
-            bleeds_count[0] += 1
+        if state_lower in ["bleeding", "hemarthrosis"]:
+            bleeds_count[0] += number_of_bleeds
 
         if state_lower == "healthy":
             base_u = base_utilities[treatment]["healthy"]
@@ -711,6 +662,66 @@ def construct_utility_reward_function(
         return discount(utility * (1 / 52), step)
 
     return utility_reward_function
+
+
+def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
+    # Conditional probability formula
+    def conditional_probs(k: int, l: float):
+        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
+
+    # Get lambda_value from kwargs
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+    number_of_bleeds = 1
+    if lambda_value != 0:
+        if not isinstance(lambda_value, float):
+            raise TypeError("No valid lambda value provided.")
+        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
+        # Normalizing
+        events_probs = [p / sum(events_probs) for p in events_probs]
+        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
+    return number_of_bleeds
+
+
+def count_bleeds_poisson(state: str, **kwargs) -> int:
+    """
+    Calculate the number of bleeding events in a given state using a Poisson distribution.
+
+    Args:
+        state (str): Current patient state (e.g., 'Bleeding', 'Joint_Bleeding').
+        **kwargs: Additional parameters, including 'lambda_bleeding' and 'lambda_joint_bleeding'.
+
+    Returns:
+        int: Number of bleeding events.
+    """
+    # Get lambda value based on state
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+
+    if (
+        lambda_value is None
+        or not isinstance(lambda_value, (int, float))
+        or lambda_value < 0
+    ):
+        raise ValueError(f"Invalid lambda value for state {state}: {lambda_value}")
+
+    if lambda_value == 0:
+        return 0
+    return max(1, np.random.poisson(lambda_value))
 
 
 def visualize_transition_matrix(
@@ -742,3 +753,33 @@ def visualize_transition_matrix(
         dpi=300,
         bbox_inches="tight",
     )
+    plt.close()
+
+
+def visualize_abr(abr_values, strategy: str):
+    """
+    Visualize sampled abr_values and draw histogram of it
+
+    Args:
+        abr_values: sampled abr values
+        strategy: on_demand or prophylaxis
+
+    Returns:
+        None: stores figures at output directory
+    """
+    plt.figure(figsize=(8, 6))
+    sns.histplot(
+        abr_values,
+        bins=30,
+        kde=True,
+        color="blue" if strategy == "on_demand" else "green",
+    )
+    plt.title(f"ABR Distribution for {strategy.capitalize()} Strategy")
+    plt.xlabel("Annual Bleeding Rate (ABR)")
+    plt.ylabel("Frequency")
+    plt.savefig(
+        PROJECT_ROOT / "outputs" / "figures" / f"abr_distribution_{strategy}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
