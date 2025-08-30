@@ -10,7 +10,7 @@ from src.data.loaders import (
 from src.processing.distribution_adjuster import adjust_age_distribution
 from pathlib import Path
 from time import time
-import model.markov
+import model.markov_chain
 import model.analysis
 import model.constants
 import matplotlib.pyplot as plt
@@ -88,7 +88,7 @@ def markov(
     prophylaxis_cache_path = cache_dir / "prophylaxis.pkl"
 
     # Load transition matrix
-    initial_state, states, on_demand_transition = model.markov.load_matrix(
+    initial_state, states, on_demand_transition = model.markov_chain.load_matrix(
         io=PROJECT_ROOT / "data" / "Transitions.xlsx",
         sheet_name="on_demand",
     )
@@ -130,7 +130,7 @@ def markov(
 
     # Run On-Demand simulation
     on_demand_inputs, on_demand_outputs = run_simulation(
-        sim_func=model.markov.on_demand_psa,
+        sim_func=model.markov_chain.on_demand_psa,
         cache_path=on_demand_cache_path,
         states=states,
         start_state=initial_state,
@@ -157,7 +157,7 @@ def markov(
 
     # Run Prophylaxis simulation
     prophylaxis_inputs, prophylaxis_outputs = run_simulation(
-        sim_func=model.markov.prophylaxis_psa,
+        sim_func=model.markov_chain.prophylaxis_psa,
         cache_path=prophylaxis_cache_path,
         states=states,
         start_state=initial_state,

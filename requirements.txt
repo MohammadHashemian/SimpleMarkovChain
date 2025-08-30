@@ -1,0 +1,6 @@
+numpy
+jupyter
+enlighten
+SALib
+matplotlib
+seaborn

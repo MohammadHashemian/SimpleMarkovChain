@@ -181,3 +181,63 @@ def remove_outliers_robust(
     print(f"Removing {len(df) - len(filtered_df)} outliers")
 
     return filtered_df
+
+
+def count_bleeds_poisson(state: str, **kwargs) -> int:
+    """
+    Calculate the number of bleeding events in a given state using a Poisson distribution.
+
+    Args:
+        state (str): Current patient state (e.g., 'Bleeding', 'Joint_Bleeding').
+        **kwargs: Additional parameters, including 'lambda_bleeding' and 'lambda_joint_bleeding'.
+
+    Returns:
+        int: Number of bleeding events.
+    """
+    # Get lambda value based on state
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "hemarthrosis"
+            else 0
+        )
+    )
+
+    if (
+        lambda_value is None
+        or not isinstance(lambda_value, (int, float))
+        or lambda_value < 0
+    ):
+        raise ValueError(f"Invalid lambda value for state {state}: {lambda_value}")
+
+    if lambda_value == 0:
+        return 0
+    return max(1, np.random.poisson(lambda_value))
+
+
+def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
+    # Conditional probability formula
+    def conditional_probs(k: int, l: float):
+        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
+
+    # Get lambda_value from kwargs
+    lambda_value = (
+        kwargs.get("lambda_bleeding")
+        if state.lower() == "bleeding"
+        else (
+            kwargs.get("lambda_joint_bleeding")
+            if state.lower() == "joint_bleeding"
+            else 0
+        )
+    )
+    number_of_bleeds = 1
+    if lambda_value != 0:
+        if not isinstance(lambda_value, float):
+            raise TypeError("No valid lambda value provided.")
+        events_probs = [conditional_probs(k, lambda_value) for k in range(1, 5, 1)]
+        # Normalizing
+        events_probs = [p / sum(events_probs) for p in events_probs]
+        number_of_bleeds = np.random.choice([i for i in range(1, 5, 1)], p=events_probs)
+    return number_of_bleeds

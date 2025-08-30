@@ -1,0 +1,30 @@
+digraph markov_chain {
+	subgraph primary_chain {
+		color=blue label="Primary Chain" style=rounded
+		node [shape=circle]
+		Healthy
+		Bleeding
+		Hemarthrosis
+		Arthropathy
+		LT_Bleeding
+		Death
+		Healthy -> Bleeding
+		Healthy -> Hemarthrosis
+		Healthy -> LT_Bleeding
+		Hemarthrosis -> Arthropathy
+		LT_Bleeding -> Death
+	}
+	subgraph secondary_chain {
+		color=red label="Secondary Chain" style=rounded
+		node [shape=circle]
+		Arthropathy
+		Bleeding_2
+		Hemarthrosis_2
+		LT_Bleeding_2
+		Death_2
+		Arthropathy -> Bleeding_2
+		Arthropathy -> Hemarthrosis_2
+		Arthropathy -> LT_Bleeding_2
+		LT_Bleeding_2 -> Death_2
+	}
+}
