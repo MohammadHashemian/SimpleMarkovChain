@@ -1,36 +1,56 @@
-from typing import Literal
 from pathlib import Path
-import math
+from statsmodels.regression.linear_model import OLSResults
+from statsmodels.robust.robust_linear_model import RLMResults
+from scipy.stats import poisson
+import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
-from statsmodels.regression.linear_model import OLSResults
-from statsmodels.robust.robust_linear_model import RLMResults
+import math
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def probability_at_least_one_event(
-    rate: float, period: Literal["weekly", "annual"]
-) -> float:
+def prob_at_least_one(lam: float) -> float:
     """
-    Calculate the probability of at least one event occurring in a given period.
+    Calculate the probability of at least one event occurring in a given interval.
 
     Args:
-        rate: Event rate (e.g., annual rate).
-        period: Time period ('annual' or 'weekly').
+        lam: Mean number of events occurring within the given interval
 
     Returns:
         Probability of at least one event.
     """
-    if period == "weekly":
-        lambda_value = rate
-    elif period == "annual":
-        lambda_value = rate / 52  # Convert annual rate to weekly
-    else:
-        raise ValueError(f"Unsupported period: {period}")
-    return 1 - np.exp(-lambda_value)
+    # Converse probability
+    # P(at least one) = 1 - p(failure)**n
+    # n: number of trials
+    return 1 - np.exp(-lam)
+
+
+def poisson_mass_function(lam, k, loc=0):
+    """
+    Poisson mass function(given k): exp(-λ) * ((λ)**k)/ k!
+    Args:
+        lam: λ
+        k: number of expected events
+        loc: to shift distribution, 0 to standardized form by default
+    """
+    return poisson.pmf(k=k, mu=lam, loc=loc)
+
+
+def zero_truncated_mass_function(lam, k):
+    """
+    Zero-Truncated Poisson PMF: (λ**k) / ((e**λ) -1) * k!
+    Args:
+        k: value(s) to evaluate the PMF at (must be integer >= 1).
+        lam: rate parameter of the underlying Poisson distribution.
+    """
+    # The classic ZTP formula
+    if k == 0:
+        raise ValueError("zero is truncated")
+    numerator = np.power(lam, k)
+    denominator = (math.exp(lam) - 1) * math.factorial(k)
+    return numerator / denominator
 
 
 def cal_body_weight(week: int, b: int = 0) -> float:

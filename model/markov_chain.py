@@ -1,15 +1,25 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
 from dataclasses import dataclass
-from model.utils import count_bleeds_poisson
-from pydantic import BaseModel
+from model.utils import count_bleeds_poisson, prob_at_least_one
 from pathlib import Path
 import numpy as np
 import math
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+
 @dataclass
-class MarkovResults:
+class Results:
+    """
+    Attrs:
+        sequences: Markov chain simulated steps results
+        total_factor_use: Sum of rewards for factor viii consumption
+        total_factor_costs: Sum of rewards for factors multiplied to it's relative cost
+        annual_factor_consumption: annualized annual_factor_consumption
+        annual_Factor_costs: annualized total_factor_costs
+        qaly: Sum of qalys over simulation periods
+    """
+
     sequences: list
     total_factor_use: float
     total_factor_costs: float
@@ -170,10 +180,10 @@ class TransitionGenerator:
             Tuple[Union[float, str], Optional[Literal["weekly", "annual"]]],
         ],
         special_transitions: Optional[Dict[str, List[float]]] = None,
-        time_step: Literal["weekly", "annual"] = "annual",
+        time_step: Literal["weekly", "annual"] = "weekly",
     ) -> None:
         """
-        Initialize ProbabilityBuilder with states and transition pairs.
+        Initialize TransitionGenerator with states and transition pairs.
 
         Args:
             states: List of states for the transition matrix.
@@ -218,12 +228,13 @@ class TransitionGenerator:
                     f"Special transition probabilities for {state} must sum to 1"
                 )
 
-    # TODO: Revalidated
     def get_probability(
-        self, value: Union[float, str], period: Optional[Literal["weekly", "annual"]]
+        self,
+        value: Union[float, int, str],
+        period: Optional[Literal["weekly", "annual"]],
     ) -> float:
         """
-        Convert a rate or probability to a probability value.
+        Convert a rate (event frequency) on given interval to a probability value.
 
         Note:
             if period value is None, use passed value directly as probability
@@ -233,147 +244,130 @@ class TransitionGenerator:
             period: The period for rate conversion ('annual', 'weekly', or None).
 
         Returns:
-            The calculated probability.
+            The probability of at least on event.
         """
         if period is None:
             return float(value)
         rate = float(value)
         if period == self.time_step:
-            lambda_ts = rate
+            lam_ts = rate
         elif period == "annual" and self.time_step == "weekly":
-            lambda_ts = rate / 52
+            lam_ts = rate / 52
         elif period == "weekly" and self.time_step == "annual":
-            lambda_ts = rate * 52
+            lam_ts = rate * 52
         else:
             raise ValueError(
                 f"Cannot convert from period {period} to time_step {self.time_step}"
             )
-        return 1 - math.exp(-lambda_ts)
+        return prob_at_least_one(lam_ts)
 
-    def get_matrix(self) -> List[List[float]]:
+    def get_crm(self) -> List[List[float]]:
+        """
+        Build the transition probability matrix for the Markov model.
+
+        Handles:
+            - Direct probabilities
+            - Competing risks from event rates
+            - Special transitions (explicit rows)
+
+        Returns:
+            Transition matrix as a list of lists
+        """
         n = len(self.states)
-        matrix = [[0.0] * n for _ in range(n)]  # empty cubic matrix
+        matrix = [[0.0] * n for _ in range(n)]
 
-        # Handle special transitions
+        # --- Handle special transitions directly ---
         for state, probs in self.special_transitions.items():
             idx = self.state_indices[state]
-            matrix[idx] = probs  # assigning special transitions directly
+            matrix[idx] = probs[:]  # copy to avoid mutation
 
-        # Handle regular transitions
+        # --- Handle regular states ---
         for state in self.states:
-            idx = self.state_indices[state]
             if state in self.special_transitions:
-                continue
+                continue  # already assigned
 
+            idx = self.state_indices[state]
             probs = [0.0] * n
 
-            # Collect transitions from this state
+            # Collect outgoing transitions
             transitions = {
                 to_state: (value, period)
-                for (from_state, to_state), (
-                    value,
-                    period,
-                ) in self.transition_pairs.items()
+                for (from_state, to_state), (value, period) in self.transition_pairs.items()
                 if from_state == state
             }
 
             if not transitions:
-                # No transitions, stay in state
+                # No outgoing transitions → absorbing/self-loop
                 probs[idx] = 1.0
                 matrix[idx] = probs
                 continue
 
-            # Check for mix of rates and direct probabilities
+            # Check for type of transitions
             periods = {period for _, period in transitions.values()}
             has_none = None in periods
             has_rates = len(periods - {None}) > 0
-            if has_none and has_rates:
-                raise ValueError(
-                    f"Cannot mix direct probabilities and rates for transitions from state {state}"
-                )
 
+            if has_none and has_rates:
+                raise ValueError(f"Cannot mix direct probabilities and rates in {state}")
+
+            # --- Case 1: Direct probabilities ---
             if has_none:
-                # All direct probabilities
                 explicit_probs = {}
                 for to_state, (value, period) in transitions.items():
-                    prob = self.get_probability(value, period)  # type: ignore
-                    explicit_probs[to_state] = prob
+                    p = self.get_probability(value, period)  # type: ignore # passthrough if period=None
+                    explicit_probs[to_state] = p
 
                 total_explicit = sum(explicit_probs.values())
-                has_self = state in explicit_probs
 
-                if has_self:
-                    probs_self = explicit_probs[state]
-                    del explicit_probs[state]
-                    for to_state, p in explicit_probs.items():
-                        probs[self.state_indices[to_state]] = p
-                    probs[idx] = probs_self
+                # Assign
+                for to_state, p in explicit_probs.items():
+                    probs[self.state_indices[to_state]] = p
 
-                    if not np.isclose(total_explicit, 1.0):
-                        print(
-                            f"Warning: Sum of explicit probabilities ({total_explicit}) for state {state} does not equal 1"
-                        )
+                if state not in explicit_probs:
+                    # allocate leftover to self
+                    probs[idx] = max(0.0, 1.0 - total_explicit)
 
-                    if total_explicit > 1.0:
-                        scale = 1.0 / total_explicit
-                        for i in range(n):
-                            probs[i] *= scale
-                    # For <1, leave as is (implicitly assuming missing prob elsewhere, but warn above)
+                # Normalize if overshooting
+                if total_explicit > 1.0:
+                    for j in range(n):
+                        probs[j] /= total_explicit
 
-                else:
-                    total_out = total_explicit
-                    if total_out > 1.0:
-                        print(
-                            f"Warning: Sum of outgoing probabilities ({total_out}) for state {state} exceeds 1; normalizing and setting self-transition to 0"
-                        )
-                        scale = 1.0 / total_out
-                        for to_state, p in explicit_probs.items():
-                            probs[self.state_indices[to_state]] = p * scale
-                        probs[idx] = 0.0
-                    else:
-                        for to_state, p in explicit_probs.items():
-                            probs[self.state_indices[to_state]] = p
-                        probs[idx] = 1.0 - total_out
-
+            # --- Case 2: Rate-based competing risks ---
             else:
-                # All rates
-                rate_dict = {}
+                lam_dict = {}
                 for to_state, (value, period) in transitions.items():
                     rate = float(value)
-                    if period == self.time_step:
-                        lambda_ts = rate
-                    elif period == "annual" and self.time_step == "weekly":
-                        lambda_ts = rate / 52
-                    elif period == "weekly" and self.time_step == "annual":
-                        lambda_ts = rate * 52
-                    else:
-                        raise ValueError(
-                            f"Cannot convert from period {period} to time_step {self.time_step}"
-                        )
-                    rate_dict[to_state] = lambda_ts
 
-                total_rate = sum(rate_dict.values())
-                if np.isclose(total_rate, 0.0):
+                    # hazard-based conversion (exact)
+                    if period == self.time_step:
+                        lam = -math.log(1 - prob_at_least_one(rate))
+                    elif period == "annual" and self.time_step == "weekly":
+                        lam = -math.log(1 - prob_at_least_one(rate)) / 52
+                    elif period == "weekly" and self.time_step == "annual":
+                        lam = -math.log(1 - prob_at_least_one(rate)) * 52
+                    else:
+                        raise ValueError(f"Cannot convert {period} → {self.time_step}")
+
+                    lam_dict[to_state] = lam
+
+                total_lam = sum(lam_dict.values())
+
+                if np.isclose(total_lam, 0.0):
+                    # No hazard → self-loop
                     probs[idx] = 1.0
                 else:
-                    survival = math.exp(-total_rate)
-                    competing_prob = 1 - survival
-                    for to_state, lambda_ts in rate_dict.items():
+                    survival = math.exp(-total_lam)  # stay in same state
+                    for to_state, lam in lam_dict.items():
                         to_idx = self.state_indices[to_state]
-                        if to_state == state:
-                            probs[to_idx] = (
-                                survival + (lambda_ts / total_rate) * competing_prob
-                            )
-                        else:
-                            probs[to_idx] = (lambda_ts / total_rate) * competing_prob
-                    # If no self in rate_dict, survival assigned to probs[idx] in the if to_state == state branch (but since not, it's 0 + others, and survival not assigned yet
-                    if state not in rate_dict:
-                        probs[idx] = survival
+                        probs[to_idx] = (lam / total_lam) * (1 - survival)
 
-            # Validate total probability sums to 1
+                    # Always add survival to self
+                    probs[idx] += survival
+
+            # --- Validation ---
             if not np.allclose(sum(probs), 1.0, rtol=1e-5):
                 raise ValueError(
-                    f"Probabilities for state {state} do not sum to 1: {sum(probs)}"
+                    f"Probabilities for {state} do not sum to 1 (got {sum(probs):.6f})"
                 )
 
             matrix[idx] = probs

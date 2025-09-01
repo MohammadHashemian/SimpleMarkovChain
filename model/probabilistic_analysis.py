@@ -1,9 +1,8 @@
 from typing import Literal, Callable
 from model import constants
-from model.markov_chain import TransitionGenerator, MarkovChains, MarkovResults
+from model.markov_chain import TransitionGenerator, MarkovChains, Results
 from model.visualization import visualize_abr
 from model.utils import cal_body_weight
-from model.utils import probability_at_least_one_event
 from SALib.sample import saltelli
 import numpy as np
 import enlighten
@@ -22,17 +21,24 @@ def worker_function(
         strategy: "on_demand" or "prophylaxis".
 
     Returns:
-        Tuple of (input_dict, result_dict) containing simulation inputs and outputs.
+        Tuple of (input_dict, Results) containing simulation inputs and outputs.
     """
-    abr = round(abr)
-    weekly_abr = abr / 52
-    weekly_ajbr = (constants.AJBR_FRACTION * abr) / 52  # weekly joint bleeding rate
-    weekly_aebr = weekly_abr - weekly_ajbr  # weekly non-joint bleeding rate
-    weekly_ltb = (
-        constants.LTB_FRACTION * abr
-    ) / 52  # weekly life-threatening bleeding rate
-    # Ensure non-negative probability for staying in Healthy state
-    no_bleeding = max(0, 52 - abr) / 52
+    # Annual values
+    annual_abr = abr
+    annual_ajbr = annual_abr * constants.AJBR_FRACTION
+    annual_ltb = annual_abr * constants.LTB_FRACTION
+    annual_aebr = annual_abr - (annual_ajbr + annual_ltb)
+
+    # Weekly values
+    wbr = annual_abr / constants.WEEKS_OF_YEAR  # weekly bleeding rate
+    wjbr = annual_ajbr / constants.WEEKS_OF_YEAR  # weekly joint bleeding rate
+    wltb = annual_ltb / constants.WEEKS_OF_YEAR  # weekly life-threatening rate
+    aebr_weekly = (
+        annual_aebr / constants.WEEKS_OF_YEAR
+    )  # weekly non-joint bleeding rate
+
+    # TODO: Probability the problem raises in step probability, should not pass value to it, and should be calculated from complementary probability
+    no_event_weekly = max(0, 52 - annual_abr) / constants.WEEKS_OF_YEAR
 
     chains = kwargs["chains"]
     primary_states = chains["primary"][0]
@@ -41,51 +47,47 @@ def worker_function(
     # ---- Transition pairs (shared across both) ----
     primary_transition_pairs = {
         # Healthy Transitions
-        ("Healthy", "Healthy"): (
-            no_bleeding,
-            "weekly",
-        ),  # TODO: Make sure returns the right probability
-        ("Healthy", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Healthy", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Healthy", "LT_Bleeding"): (weekly_ltb, "weekly"),
+        ("Healthy", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Healthy", "Hemarthrosis"): (wjbr, "weekly"),
+        ("Healthy", "LT_Bleeding"): (wltb, "weekly"),
         ("Healthy", "Death"): (0, "weekly"),
         # Bleeding Transitions
-        ("Bleeding", "Healthy"): (no_bleeding, "weekly"),
-        ("Bleeding", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Bleeding", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Bleeding", "LT_Bleeding"): (weekly_ltb, "weekly"),
+        ("Bleeding", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
+        ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
         ("Bleeding", "Death"): (0, "weekly"),
         # Hemarthrosis Transitions
-        ("Hemarthrosis", "Healthy"): (no_bleeding, "weekly"),
-        ("Hemarthrosis", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Hemarthrosis", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Hemarthrosis", "LT_Bleeding"): (weekly_ltb, "weekly"),
-        ("Hemarthrosis", "Arthropathy"): (
-            constants.HEMARTHROSIS_TO_ARTHROPATHY,
-            "weekly",
-        ),  # TODO: Place holder value
+        ("Hemarthrosis", "Healthy"): (no_event_weekly, "weekly"),
+        ("Hemarthrosis", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
+        ("Hemarthrosis", "Arthropathy"): (constants.LAM_ARTHROPATHY, "weekly"),  # TODO
         ("Hemarthrosis", "Death"): (0, "weekly"),
+        # SELF_TRANSITIONS
+        # ("Healthy", "Healthy"): (no_event_weekly, "weekly"),
+        # ("Bleeding", "Healthy"): (no_event_weekly, "weekly"),
+        # ("Hemarthrosis", "Hemarthrosis"): (wjbr, "weekly"),
     }
 
     secondary_transition_pairs = {
         # Arthropathy Transitions
-        ("Arthropathy", "Arthropathy"): (no_bleeding, "weekly"),  # TODO: validated
-        ("Arthropathy", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Arthropathy", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Arthropathy", "LT_Bleeding"): (weekly_ltb, "weekly"),
+        ("Arthropathy", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Arthropathy", "Hemarthrosis"): (wjbr, "weekly"),
+        ("Arthropathy", "LT_Bleeding"): (wltb, "weekly"),
         ("Arthropathy", "Death"): (0, "weekly"),
         # Bleeding Transitions
-        ("Bleeding", "Arthropathy"): (no_bleeding, "weekly"),
-        ("Bleeding", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Bleeding", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Bleeding", "LT_Bleeding"): (weekly_ltb, "weekly"),
+        ("Bleeding", "Arthropathy"): (no_event_weekly, "weekly"),
+        ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
+        ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
         ("Bleeding", "Death"): (0, "weekly"),
         # Hemarthrosis Transitions
-        ("Hemarthrosis", "Arthropathy"): (no_bleeding, "weekly"),
-        ("Hemarthrosis", "Bleeding"): (weekly_aebr, "weekly"),
-        ("Hemarthrosis", "Hemarthrosis"): (weekly_ajbr, "weekly"),
-        ("Hemarthrosis", "LT_Bleeding"): (weekly_ltb, "weekly"),
+        ("Hemarthrosis", "Arthropathy"): (no_event_weekly, "weekly"),
+        ("Hemarthrosis", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Death"): (0, "weekly"),
+        # SELF_TRANSITIONS
+        # ("Arthropathy", "Arthropathy"): (no_event_weekly, "weekly"),
+        # ("Bleeding", "Bleeding"): (aebr_weekly, "weekly"),
+        # ("Hemarthrosis", "Hemarthrosis"): (wjbr, "weekly"),
     }
 
     # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
@@ -109,22 +111,22 @@ def worker_function(
         transition_pairs=secondary_transition_pairs,
         special_transitions=secondary_special_transitions,
     )
-    chains["primary"] = (primary_states, primary_builder.get_matrix())
-    chains["secondary"] = (secondary_states, secondary_builder.get_matrix())
+    chains["primary"] = (primary_states, primary_builder.get_crm())
+    chains["secondary"] = (secondary_states, secondary_builder.get_crm())
 
     # ---- Markov model setup ----
     markov = MarkovChains(
         chains=chains,
-        lambda_bleeding=weekly_aebr,  # Corrected: Weekly non-joint bleeding rate
-        lambda_joint_bleeding=weekly_ajbr,  # Corrected: Weekly joint bleeding rate
+        lambda_bleeding=aebr_weekly,  # Corrected: Weekly non-joint bleeding rate
+        lambda_joint_bleeding=wjbr,  # Corrected: Weekly joint bleeding rate
         **{k: v for k, v in kwargs.items() if k != "chains"},
     )
 
     # Select reward functions based on treatment
     if strategy == "on_demand":
-        factor_func = on_demand_factor_consumption_wrapper
+        factor_func = on_demand_factor_consumption
     elif strategy == "prophylaxis":
-        factor_func = prophylaxis_factor_consumption_wrapper
+        factor_func = prophylaxis_factor_consumption
     else:
         raise ValueError(f"Invalid treatment: {strategy}")
 
@@ -138,7 +140,7 @@ def worker_function(
     if not n_cycles or not isinstance(n_cycles, int):
         raise ValueError("Model number of steps not correctly defined for psa.")
 
-    inputs = {"abr": abr, "ajbr": weekly_ajbr * 52, "chains": chains}
+    inputs = {"abr": abr, "ajbr": wjbr * 52, "chains": chains}
 
     _utility_func_name = construct_utility_reward_function.__name__.removeprefix(
         "construct_"
@@ -164,7 +166,7 @@ def worker_function(
     ]
 
     # Store aggregated results
-    res = MarkovResults(
+    results = Results(
         total_factor_use=total_factor_use,
         total_factor_costs=np.sum(factor_costs),
         annual_factor_consumption=total_factor_use / (n_cycles / 52.0),
@@ -172,12 +174,12 @@ def worker_function(
         qaly=total_utility_values,
         sequences=sequences,
     )
-    return (inputs, res)
+    return (inputs, results)
 
 
 def markov_chains_psa_wrapper(
     strategy: str, n_samples: int, **kwargs
-) -> tuple[list, list[MarkovResults]]:
+) -> tuple[list, list[Results]]:
     """
     Run probabilistic sensitivity analysis simulation for a given treatment strategy.
 
@@ -320,7 +322,7 @@ def factor_consumption(
     return injected_dose
 
 
-def on_demand_factor_consumption_wrapper(
+def on_demand_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ):
     return factor_consumption(
@@ -328,7 +330,7 @@ def on_demand_factor_consumption_wrapper(
     )
 
 
-def prophylaxis_factor_consumption_wrapper(
+def prophylaxis_factor_consumption(
     step: int, state: str, number_of_bleeds: int, **psa_kwargs
 ) -> int:
     return factor_consumption(
