@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from model.utils import count_bleeds_poisson, prob_at_least_one
 from pathlib import Path
 import numpy as np
-import math
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -292,7 +291,10 @@ class TransitionGenerator:
             # Collect outgoing transitions
             transitions = {
                 to_state: (value, period)
-                for (from_state, to_state), (value, period) in self.transition_pairs.items()
+                for (from_state, to_state), (
+                    value,
+                    period,
+                ) in self.transition_pairs.items()
                 if from_state == state
             }
 
@@ -308,7 +310,9 @@ class TransitionGenerator:
             has_rates = len(periods - {None}) > 0
 
             if has_none and has_rates:
-                raise ValueError(f"Cannot mix direct probabilities and rates in {state}")
+                raise ValueError(
+                    f"Cannot mix direct probabilities and rates in {state}"
+                )
 
             # --- Case 1: Direct probabilities ---
             if has_none:
@@ -340,11 +344,11 @@ class TransitionGenerator:
 
                     # hazard-based conversion (exact)
                     if period == self.time_step:
-                        lam = -math.log(1 - prob_at_least_one(rate))
+                        lam = -np.log(1 - prob_at_least_one(rate))
                     elif period == "annual" and self.time_step == "weekly":
-                        lam = -math.log(1 - prob_at_least_one(rate)) / 52
+                        lam = -np.log(1 - prob_at_least_one(rate)) / 52
                     elif period == "weekly" and self.time_step == "annual":
-                        lam = -math.log(1 - prob_at_least_one(rate)) * 52
+                        lam = -np.log(1 - prob_at_least_one(rate)) * 52
                     else:
                         raise ValueError(f"Cannot convert {period} → {self.time_step}")
 
@@ -356,7 +360,7 @@ class TransitionGenerator:
                     # No hazard → self-loop
                     probs[idx] = 1.0
                 else:
-                    survival = math.exp(-total_lam)  # stay in same state
+                    survival = np.exp(-total_lam)  # stay in same state
                     for to_state, lam in lam_dict.items():
                         to_idx = self.state_indices[to_state]
                         probs[to_idx] = (lam / total_lam) * (1 - survival)
