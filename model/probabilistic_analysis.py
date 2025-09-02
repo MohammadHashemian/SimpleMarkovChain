@@ -33,12 +33,11 @@ def worker_function(
     wbr = annual_abr / constants.WEEKS_OF_YEAR  # weekly bleeding rate
     wjbr = annual_ajbr / constants.WEEKS_OF_YEAR  # weekly joint bleeding rate
     wltb = annual_ltb / constants.WEEKS_OF_YEAR  # weekly life-threatening rate
-    aebr_weekly = (
-        annual_aebr / constants.WEEKS_OF_YEAR
-    )  # weekly non-joint bleeding rate
+    webr = annual_aebr / constants.WEEKS_OF_YEAR  # weekly non-joint bleeding rate
 
-    # TODO: Probability the problem raises in step probability, should not pass value to it, and should be calculated from complementary probability
-    no_event_weekly = max(0, 52 - annual_abr) / constants.WEEKS_OF_YEAR
+    # TODO: is the approach right?
+    annual_no_event = max(0, 52 - annual_abr)
+    weekly_no_event = annual_no_event / constants.WEEKS_OF_YEAR
 
     chains = kwargs["chains"]
     primary_states = chains["primary"][0]
@@ -47,18 +46,18 @@ def worker_function(
     # ---- Transition pairs (shared across both) ----
     primary_transition_pairs = {
         # Healthy Transitions
-        ("Healthy", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Healthy", "Bleeding"): (webr, "weekly"),
         ("Healthy", "Hemarthrosis"): (wjbr, "weekly"),
         ("Healthy", "LT_Bleeding"): (wltb, "weekly"),
         ("Healthy", "Death"): (0, "weekly"),
         # Bleeding Transitions
-        ("Bleeding", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Bleeding", "Bleeding"): (webr, "weekly"),
         ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
         ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
         ("Bleeding", "Death"): (0, "weekly"),
         # Hemarthrosis Transitions
-        ("Hemarthrosis", "Healthy"): (no_event_weekly, "weekly"),
-        ("Hemarthrosis", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Hemarthrosis", "Healthy"): (weekly_no_event, "weekly"),
+        ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Arthropathy"): (constants.LAM_ARTHROPATHY, "weekly"),  # TODO
         ("Hemarthrosis", "Death"): (0, "weekly"),
@@ -70,18 +69,18 @@ def worker_function(
 
     secondary_transition_pairs = {
         # Arthropathy Transitions
-        ("Arthropathy", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Arthropathy", "Bleeding"): (webr, "weekly"),
         ("Arthropathy", "Hemarthrosis"): (wjbr, "weekly"),
         ("Arthropathy", "LT_Bleeding"): (wltb, "weekly"),
         ("Arthropathy", "Death"): (0, "weekly"),
         # Bleeding Transitions
-        ("Bleeding", "Arthropathy"): (no_event_weekly, "weekly"),
+        ("Bleeding", "Arthropathy"): (weekly_no_event, "weekly"),
         ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
         ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
         ("Bleeding", "Death"): (0, "weekly"),
         # Hemarthrosis Transitions
-        ("Hemarthrosis", "Arthropathy"): (no_event_weekly, "weekly"),
-        ("Hemarthrosis", "Bleeding"): (aebr_weekly, "weekly"),
+        ("Hemarthrosis", "Arthropathy"): (weekly_no_event, "weekly"),
+        ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Death"): (0, "weekly"),
         # SELF_TRANSITIONS
@@ -117,7 +116,7 @@ def worker_function(
     # ---- Markov model setup ----
     markov = MarkovChains(
         chains=chains,
-        lambda_bleeding=aebr_weekly,  # Corrected: Weekly non-joint bleeding rate
+        lambda_bleeding=webr,  # Corrected: Weekly non-joint bleeding rate
         lambda_joint_bleeding=wjbr,  # Corrected: Weekly joint bleeding rate
         **{k: v for k, v in kwargs.items() if k != "chains"},
     )

@@ -181,7 +181,7 @@ def extract(
         pair = (icer, (dc, dq, da))
         if dc < 0 and dq > 0:  # Dominant
             dom.append(pair)
-        elif icer <= constants.WILLINGNESS_TO_PAY_THRESHOLD:  # Cost-effective
+        elif icer <= constants.WTP_THRESHOLD:  # Cost-effective
             ce.append(pair)
         else:  # Not cost-effective
             nce.append(pair)
@@ -527,10 +527,10 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
     # Willingness to play line
     icer_ax.plot(
         x_rng,
-        x_rng * constants.WILLINGNESS_TO_PAY_THRESHOLD,
+        x_rng * constants.WTP_THRESHOLD,
         "k--",
         alpha=0.8,
-        label=f"WTP: ${constants.WILLINGNESS_TO_PAY_THRESHOLD:,}/QALY",
+        label=f"WTP: ${constants.WTP_THRESHOLD:,}/QALY",
     )
     icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
@@ -596,7 +596,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
             [0],
             linestyle="--",
             color="black",
-            label=f"WTP: ${constants.WILLINGNESS_TO_PAY_THRESHOLD:,}/QALY",
+            label=f"WTP: ${constants.WTP_THRESHOLD:,}/QALY",
         ),
     ]
     icer_ax.legend(handles=legend_elements, loc="lower right")
