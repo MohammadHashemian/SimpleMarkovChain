@@ -265,6 +265,120 @@ class TransitionGenerator:
         Build the transition probability matrix for the Markov model.
 
         Handles:
+            - Direct probabilities (period=None)
+            - Competing risks from event rates (period="weekly" or "annual")
+            - Special transitions (explicit rows)
+            - Mixing direct probabilities and rates for the same state
+
+        Returns:
+            Transition matrix as a list of lists
+        """
+        n = len(self.states)
+        matrix = [[0.0] * n for _ in range(n)]
+
+        # --- Handle special transitions directly ---
+        for state, probs in self.special_transitions.items():
+            idx = self.state_indices[state]
+            matrix[idx] = probs[:]  # Copy to avoid mutation
+
+        # --- Handle regular states ---
+        for state in self.states:
+            if state in self.special_transitions:
+                continue  # Already assigned
+
+            idx = self.state_indices[state]
+            probs = [0.0] * n
+
+            # Collect outgoing transitions
+            transitions = {
+                to_state: (value, period)
+                for (from_state, to_state), (
+                    value,
+                    period,
+                ) in self.transition_pairs.items()
+                if from_state == state
+            }
+
+            if not transitions:
+                # No outgoing transitions → absorbing/self-loop
+                probs[idx] = 1.0
+                matrix[idx] = probs
+                continue
+
+            # Split transitions into direct probabilities and rates
+            direct_probs = {}
+            rate_transitions = {}
+            for to_state, (value, period) in transitions.items():
+                if period is None:
+                    direct_probs[to_state] = float(value)
+                else:
+                    rate_transitions[to_state] = (value, period)
+
+            # --- Handle direct probabilities ---
+            total_direct_prob = sum(direct_probs.values())
+            if total_direct_prob > 1.0:
+                raise ValueError(
+                    f"Sum of direct probabilities for {state} exceeds 1: {total_direct_prob}"
+                )
+
+            for to_state, p in direct_probs.items():
+                probs[self.state_indices[to_state]] = p
+
+            # --- Handle rate-based transitions ---
+            remaining_prob = 1.0 - total_direct_prob
+            if remaining_prob < 0:
+                raise ValueError(
+                    f"Negative remaining probability for {state}: {remaining_prob}"
+                )
+
+            if rate_transitions and remaining_prob > 0:
+                lam_dict = {}
+                for to_state, (value, period) in rate_transitions.items():
+                    rate = float(value)
+                    if period == self.time_step:
+                        lam = rate
+                    elif period == "annual" and self.time_step == "weekly":
+                        lam = rate / 52  # Direct rate scaling
+                    elif period == "weekly" and self.time_step == "annual":
+                        lam = rate * 52
+                    else:
+                        raise ValueError(f"Cannot convert {period} → {self.time_step}")
+
+                    lam_dict[to_state] = max(lam, 0)  # Ensure non-negative
+
+                total_lam = sum(lam_dict.values())
+
+                if np.isclose(total_lam, 0.0):
+                    probs[idx] += remaining_prob  # Allocate remaining to self
+                else:
+                    survival = np.exp(-total_lam)  # Self-transition probability
+                    for to_state, lam in lam_dict.items():
+                        to_idx = self.state_indices[to_state]
+                        probs[to_idx] += (
+                            (lam / total_lam) * remaining_prob * (1 - survival)
+                            if total_lam > 0
+                            else 0
+                        )
+                    probs[idx] += remaining_prob * survival
+
+            elif not rate_transitions:
+                # No rate-based transitions, allocate remaining to self
+                probs[idx] += remaining_prob
+
+            # --- Validation ---
+            if not np.allclose(sum(probs), 1.0, rtol=1e-5):
+                raise ValueError(
+                    f"Probabilities for {state} do not sum to 1 (got {sum(probs):.6f})"
+                )
+
+            matrix[idx] = probs
+        return matrix
+
+    def get_restricted_crm(self) -> List[List[float]]:
+        """
+        Build the transition probability matrix for the Markov model.
+
+        Handles:
             - Direct probabilities
             - Competing risks from event rates
             - Special transitions (explicit rows)

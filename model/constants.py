@@ -12,10 +12,10 @@ SECONDARY_STATES = ["Arthropathy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "D
 WTP_THRESHOLD = 4_771.4 * 3  # USD
 
 
-WEEKS_OF_YEAR = 52  # Maybe 52.14 (?) <---------------------------------
-START_SIMULATION_AGE_IN_WEEK = 2 * WEEKS_OF_YEAR  # 2 Years old patients
-LONG_TERM_CYCLE_COUNTS = 70 * WEEKS_OF_YEAR  # 70 years in weeks (2, 72)
-SHORT_TERM_CYCLE_COUNTS = 10 * WEEKS_OF_YEAR  # 10 years in weeks (2, 12)
+WOY = 52  # Weeks of year maybe 52.14 (?) <-------------------
+START_SIMULATION_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
+LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 70 years in weeks (2, 72)
+SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
 
 # CONSIDERABLE
 AJBR_FRACTION = 0.75  # Percentage of joint bleeds from all bleed events
@@ -33,16 +33,17 @@ LT_BLEEDING_DOSE = 550
 
 # TODO:
 WILLINGNESS_TO_PAY_THRESHOLD_IRR = None
+LATE_ARTHROPATHY = None
 
 PPP_CONVERSION_FACTOR = 117_170  # World Bank 2024 IRR/USD, PPP
 # PPP_CONVERSION_FACTOR = 165_354  # Y_CHART | IMF 2025 IRR/USD, PPP
 
+# Rate indicates frequency of Hemarthrosis causes permanent joint damage (lambda)
 # Tuned to fit Manco-Johnson M et al. article on NEW ENGLAND journal:
 # Radio graphic results indicate 93% and 81% had no joint damage
-# Rate indicates frequency of Hemarthrosis causes permanent joint damage (lambda)
-LAM_ARTHROPATHY = 0.0040 
+# MRI suggests 93% of prophylaxis and 55% of on demand had normal joint
+EARLY_ARTHROPATHY = 0.05 # (PSA (?) as it's really effects the const-effectiveness results)
 
-
-# IGNORED FEATURES
+# IGNORED FEATURES (expenditures and effects are at same time, not needing to discount in this case)
 # DISCOUNT_RATE_WEEKLY = ((1 + 0.035) ** (1 / 52)) - 1
 DISCOUNT_RATE_WEEKLY = None

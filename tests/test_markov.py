@@ -1,7 +1,13 @@
 from model.utils import prob_at_least_one, poisson_mass_function
-from model.constants import WEEKS_OF_YEAR, AJBR_FRACTION, LTB_FRACTION
+from model.constants import WOY, AJBR_FRACTION, LTB_FRACTION
 import numpy as np
 import pytest
+
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("__pytest__")
 
 
 @pytest.fixture()
@@ -18,18 +24,18 @@ def test_probability(abrs):
     annual_ltb: float = annual_abr * LTB_FRACTION
     annual_aebr: float = annual_abr - (annual_ajbr + annual_ltb)
     # weekly values
-    weekly_abr: float = annual_abr / WEEKS_OF_YEAR
-    weekly_ajbr: float = annual_ajbr / WEEKS_OF_YEAR
-    weekly_aebr: float = annual_aebr / WEEKS_OF_YEAR
-    weekly_ltb: float = annual_ltb / WEEKS_OF_YEAR
+    weekly_abr: float = annual_abr / WOY
+    weekly_ajbr: float = annual_ajbr / WOY
+    weekly_aebr: float = annual_aebr / WOY
+    weekly_ltb: float = annual_ltb / WOY
     to_states = {
         "Bleeding": (weekly_aebr, "weekly"),
         "Hemarthrosis": (weekly_ajbr, "weekly"),
         "LT_Bleeding": (weekly_ltb, "weekly"),
     }
-    print(f"\n \n Annual Bleeding Rate: {annual_abr}")
-    print(
+    logger.info(
         f"""
+        Annual Bleeding Rate: {annual_abr}
         Bleeding frequency within a week (λ) WBR, WJBR, WEBR, WLTB:
         {round(weekly_abr, 2)}, {round(weekly_ajbr, 2)}, {round(weekly_aebr, 2)}, {round(weekly_ltb, 2)}
         """
@@ -44,10 +50,11 @@ def test_probability(abrs):
     ltb_norm = ltb_prob / sum_of_poisson
     no_bleed_norm = no_bleed_prob / sum_of_poisson
     sum_of_poisson_norms = ltb_norm + ajbr_norm + aebr_norm + no_bleed_prob
-    print(
+    logger.info(
         f"""
         Probability of no_event from poisson distribution:
         Healthy: {round(no_bleed_prob, 4)}
+        
         Probability of at_least_one_event poisson distribution:
         Bleeding: {round(aebr_prob, 4)}
         Hemarthrosis: {round(ajbr_prob, 4)}
@@ -69,7 +76,7 @@ def test_probability(abrs):
         [-np.log(1 - prob_at_least_one(_[0])) for _ in to_states.values()]
     )
     survival = np.exp(-total_lam)
-    print(
+    logger.info(
         f"""
         Sum of λ (total events happens on a week): {round(total_lam, 4)}
         Sum of hazard based conversion λ: {round(total_hazard_lam, 4)}
@@ -78,15 +85,17 @@ def test_probability(abrs):
     )
     lam_dict = {key: value[0] for key, value in to_states.items()}
     probs = {"Healthy": survival}
-    print(f"    Probability value to Healthy: {round(probs['Healthy'], 4)}")
+    logger.info(f"    Probability value to Healthy: {round(probs['Healthy'], 4)}")
     for to_state, lam in lam_dict.items():
         if lam:
             probs.update({to_state: ((lam) / total_lam) * (1 - survival)})
         else:
             probs.update({to_state: 0})
-        print(f"    Probability value to {to_state}: {round(probs[to_state], 4)}")
+        logger.info(f"    Probability value to {to_state}: {round(probs[to_state], 4)}")
     sum_of_survival = np.sum([val for val in probs.values() if val])
-    print(f"    Sum of values: {sum_of_survival}")
-    print(
-        "\nResult:\n Survival/competing risk method gained accurate transition matrix for lambda greater than 1, which is crucial in our study."
+    logger.info(f"    Sum of values: {sum_of_survival}")
+    logger.info(
+        """ \n
+            Result: Survival/competing risk method gained accurate transition matrix
+            for λ > 1, which is crucial in our study."""
     )
