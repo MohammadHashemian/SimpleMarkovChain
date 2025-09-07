@@ -20,6 +20,8 @@ SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
 # CONSIDERABLE
 AJBR_FRACTION = 0.75  # Percentage of joint bleeds from all bleed events
 LTB_FRACTION = 0.045  # Percent of life threatening bleeds from all bleed events
+OD_LTB_RATE = 255 / 100_000  # TODO
+PRO_LTB_RATE = 166 / 100_000  # TODO
 RIAL_USD_PRICE = 853_661  # TGJU IRR/USD
 PRICE_PER_UI_FACTOR_VIII = 58_000  # IRR, FDA
 IR_PROPHYLAXIS_WEEKLY_DOSE = 25 * 2  # IR Protocol
@@ -42,7 +44,9 @@ PPP_CONVERSION_FACTOR = 117_170  # World Bank 2024 IRR/USD, PPP
 # Tuned to fit Manco-Johnson M et al. article on NEW ENGLAND journal:
 # Radio graphic results indicate 93% and 81% had no joint damage
 # MRI suggests 93% of prophylaxis and 55% of on demand had normal joint
-EARLY_ARTHROPATHY = 0.05 # (PSA (?) as it's really effects the const-effectiveness results)
+EARLY_ARTHROPATHY = (
+    0.05  # (PSA (?) as it's really effects the const-effectiveness results)
+)
 
 # IGNORED FEATURES (expenditures and effects are at same time, not needing to discount in this case)
 # DISCOUNT_RATE_WEEKLY = ((1 + 0.035) ** (1 / 52)) - 1

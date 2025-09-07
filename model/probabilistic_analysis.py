@@ -98,11 +98,11 @@ def worker_function(
     # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
     primary_special_transitions = {
         "Death": [0.0] * (len(primary_states) - 1) + [1.0],  # Absorbing
-        "LT_Bleeding": [0.8] + [0.0] * (len(primary_states) - 2) + [0.2],
+        "LT_Bleeding": [0.94] + [0.0] * (len(primary_states) - 2) + [0.06],
     }
     secondary_special_transitions = {
         "Death": [0.0] * (len(secondary_states) - 1) + [1.0],  # Absorbing
-        "LT_Bleeding": [0.8] + [0.0] * (len(secondary_states) - 2) + [0.2],
+        "LT_Bleeding": [0.94] + [0.0] * (len(secondary_states) - 2) + [0.06],
     }
 
     # ---- Build transition matrices ----
@@ -324,6 +324,9 @@ def factor_consumption(
             )
         case "lt_bleeding":
             injected_dose += round(weight * constants.LT_BLEEDING_DOSE)
+        case "death":
+            # to avoid assigning base prophylaxes dose to death
+            injected_dose = 0
 
     return injected_dose
 
@@ -354,8 +357,6 @@ def construct_utility_reward_function(
     bleeds_count = [0]  # closure mutable container
 
     # --- Configuration ---
-    # NOTE
-    # same or different base utility? 0.85, 0.915
     base_utilities = {
         "on_demand": {"healthy": 0.915},
         "prophylaxis": {"healthy": 0.915},
