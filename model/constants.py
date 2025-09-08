@@ -9,7 +9,8 @@ PRIMARY_STATES = [
     "Death",
 ]
 SECONDARY_STATES = ["Arthropathy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
-WTP_THRESHOLD = 4_771.4 * 3  # USD
+GDP_PER_CAPITA = 4_771.4  # USD
+WTP_THRESHOLD = GDP_PER_CAPITA * 3  # USD
 
 
 WOY = 52  # Weeks of year maybe 52.14 (?) <-------------------
