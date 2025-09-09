@@ -304,7 +304,7 @@ def factor_consumption(
         int: Total factor VIII consumption (IU).
     """
     # starting treatment from age 2 yo
-    weight = cal_body_weight(step, b=constants.START_SIMULATION_AGE_IN_WEEK)
+    weight = cal_body_weight(step, b=constants.SHORT_SIMULATION_START_AGE_IN_WEEK)
     injected_dose = 0
 
     # Add prophylaxis baseline if applicable

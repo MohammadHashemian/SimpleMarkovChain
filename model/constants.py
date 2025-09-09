@@ -14,9 +14,11 @@ WTP_THRESHOLD = GDP_PER_CAPITA * 3  # USD
 
 
 WOY = 52  # Weeks of year maybe 52.14 (?) <-------------------
-START_SIMULATION_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
 LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 70 years in weeks (2, 72)
 SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
+SHORT_SIMULATION_START_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
+# TODO: To be considered (?)
+LONG_SIMULATION_START_AGE_IN_WEEK = SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS # -> Age 12
 
 # CONSIDERABLE
 AJBR_FRACTION = 0.75  # Percentage of joint bleeds from all bleed events
