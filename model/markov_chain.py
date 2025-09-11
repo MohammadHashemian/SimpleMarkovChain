@@ -25,6 +25,7 @@ class Results:
     annual_factor_consumption: float
     annual_factor_costs: float
     qaly: float
+    abr: float
 
 
 class MarkovChains:
@@ -64,6 +65,7 @@ class MarkovChains:
         self.switch_conditions = switch_conditions or {}
         self.current_chain = start_chain
         self.current_state_idx: int = 0
+        self.store: Dict[str, Callable] = {}
 
         # Validate all chains
         for chain_name, (states, transitions) in self.chains.items():
@@ -91,6 +93,14 @@ class MarkovChains:
         self.reward_functions.append(func)
         self.rewards[func.__name__] = []
 
+    def add_store_function(self, arg_name: str, func: Callable) -> None:
+        """
+        Adds a reward function that will be called prior to normal reward functions,
+        and it's results will be passed to normal reward functions
+        """
+        self.store[arg_name] = func
+        self.rewards[arg_name] = []
+
     def _get_current_chain(self) -> tuple[List[str], np.ndarray]:
         """Return active states and transitions."""
         return self.chains[self.current_chain]
@@ -104,62 +114,51 @@ class MarkovChains:
         states, transitions = self._get_current_chain()
         assert isinstance(states, list), "States must be a list of strings"
 
-        # Rewards for initial state
-        if self.reward_functions:
-            bleeds_count = count_bleeds_poisson(
-                state=states[current_state_idx], **self.psa_kwargs
-            )
-            for func in self.reward_functions:
-                r = func(
-                    step=0,
-                    state=states[current_state_idx],
-                    number_of_bleeds=bleeds_count,
-                    chain=self.current_chain,
-                    **self.psa_kwargs,
-                )
-                self.rewards[func.__name__].append(r)
-
-        for step in range(self.steps):
+        for step in range(self.steps + 1):  # Include final state
             yield states[current_state_idx]
 
-            # Check for chain switch
-            for chain_name, condition in self.switch_conditions.items():
-                if chain_name != self.current_chain and condition(
-                    step,
-                    states[current_state_idx],
-                    self.current_chain,
-                    **self.psa_kwargs,
-                ):
-                    self.current_chain = chain_name
-                    states, transitions = self._get_current_chain()
-                    assert isinstance(states, list), "States must be a list of strings"
-                    # Reset state if it doesn't exist in new chain
-                    if states[current_state_idx] not in states:
-                        current_state_idx = 0
-                    else:
-                        current_state_idx = states.index(states[current_state_idx])
-                    break
-
-            # Transition
-            probs = transitions[current_state_idx]
-            current_state_idx = np.random.choice(len(states), p=probs)
-
-            # Rewards
+            # Calculate rewards
+            reward_kwargs = {}
+            if self.store:
+                for arg_name, func in self.store.items():
+                    reward_kwargs[arg_name] = func(
+                        state=states[current_state_idx], **self.psa_kwargs
+                    )
+                    self.rewards[arg_name].append(reward_kwargs[arg_name])
             if self.reward_functions:
-                bleeds_count = count_bleeds_poisson(
-                    state=states[current_state_idx], **self.psa_kwargs
-                )
                 for func in self.reward_functions:
                     r = func(
-                        step=step + 1,
+                        step=step,
                         state=states[current_state_idx],
-                        number_of_bleeds=bleeds_count,
                         chain=self.current_chain,
+                        **reward_kwargs,
                         **self.psa_kwargs,
                     )
                     self.rewards[func.__name__].append(r)
 
-        yield states[current_state_idx]
+            if step < self.steps:  # Skip transition for final step
+                # Check for chain switch
+                for chain_name, condition in self.switch_conditions.items():
+                    if chain_name != self.current_chain and condition(
+                        step,
+                        states[current_state_idx],
+                        self.current_chain,
+                        **self.psa_kwargs,
+                    ):
+                        self.current_chain = chain_name
+                        states, transitions = self._get_current_chain()
+                        assert isinstance(
+                            states, list
+                        ), "States must be a list of strings"
+                        if states[current_state_idx] not in states:
+                            current_state_idx = 0
+                        else:
+                            current_state_idx = states.index(states[current_state_idx])
+                        break
+
+                # Transition
+                probs = transitions[current_state_idx]
+                current_state_idx = np.random.choice(len(states), p=probs)
 
     def collect_rewards(self) -> Dict[str, List[float | int]]:
         """Return all collected rewards for each reward function."""
@@ -262,7 +261,9 @@ class TransitionGenerator:
 
     def get_crm(self) -> List[List[float]]:
         """
-        Build the transition probability matrix for the Markov model.
+        Construct discrete-time approximation of a continuous-time events by
+        converting continuous transition rates (λ) into discrete transition
+        probabilities for a given time step.
 
         Handles:
             - Direct probabilities (period=None)
@@ -351,9 +352,14 @@ class TransitionGenerator:
                 if np.isclose(total_lam, 0.0):
                     probs[idx] += remaining_prob  # Allocate remaining to self
                 else:
-                    survival = np.exp(-total_lam)  # Self-transition probability
+                    survival = np.exp(
+                        -total_lam
+                    )  # Self-transition probability  P(T>t)=e**(−λt), t=1
                     for to_state, lam in lam_dict.items():
                         to_idx = self.state_indices[to_state]
+                        #  Conditional probability of transitioning to to_state (Normalizing factor)  * Cumulative distribution function
+                        #  The normalizing factor distributes the total transition probability among the possible destination states based on their individual rates
+                        #  and ensures the total sum of probabilities does not exceed 1 even with given direct probabilities as it distributes to remaining probabilities
                         probs[to_idx] += (
                             (lam / total_lam) * remaining_prob * (1 - survival)
                             if total_lam > 0
@@ -374,6 +380,7 @@ class TransitionGenerator:
             matrix[idx] = probs
         return matrix
 
+    # Deprecated
     def get_restricted_crm(self) -> List[List[float]]:
         """
         Build the transition probability matrix for the Markov model.

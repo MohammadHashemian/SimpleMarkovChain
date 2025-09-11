@@ -203,40 +203,40 @@ def remove_outliers_robust(
     return filtered_df
 
 
-def count_bleeds_poisson(state: str, **kwargs) -> int:
+def count_bleeds_poisson(state: str, k_range=16, **kwargs) -> int:
     """
-    Calculate the number of bleeding events in a given state using a Poisson distribution.
+    Calculate the number of bleeding events in a given state using zero truncated poisson distribution.
 
     Args:
-        state (str): Current patient state (e.g., 'Bleeding', 'Joint_Bleeding').
-        **kwargs: Additional parameters, including 'lambda_bleeding' and 'lambda_joint_bleeding'.
+        state (str): Current patient state (e.g., 'Bleeding', 'Hemarthrosis').
+        **kwargs: Additional parameters, including 'wbr','webr' and 'wjbr' to calculate lambda.
 
     Returns:
-        int: Number of bleeding events.
+        int: Number of bleeding events on a single week (interval).
     """
-    # Get lambda value based on state
-    lambda_value = (
-        kwargs.get("lambda_bleeding")
-        if state.lower() == "bleeding"
-        else (
-            kwargs.get("lambda_joint_bleeding")
-            if state.lower() == "hemarthrosis"
-            else 0
-        )
-    )
-
-    if (
-        lambda_value is None
-        or not isinstance(lambda_value, (int, float))
-        or lambda_value < 0
-    ):
-        raise ValueError(f"Invalid lambda value for state {state}: {lambda_value}")
-
-    if lambda_value == 0:
+    if state.lower() != "bleeding" and state.lower() != "hemarthrosis":
         return 0
-    return max(1, np.random.poisson(lambda_value))
+
+    def cal():
+        lam = kwargs.get("wbr")
+        if lam is None or not isinstance(lam, (int, float)) or lam < 0:
+            raise ValueError(f"Invalid lambda value for state {state}: {lam}")
+        k_values = [i for i in np.arange(1, k_range, 1)]
+        weights = []
+        for i in k_values:
+            if i == 0:
+                continue
+            weights.append(zero_truncated_mass_function(lam=lam, k=i))
+        return np.random.choice(k_values, p=weights, size=1)[0]
+
+    try:
+        count = cal()
+    except ValueError:
+        count = count_bleeds_poisson(state, k_range * 2, **kwargs)
+    return count
 
 
+# DEPRECATED
 def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
     # Conditional probability formula
     def conditional_probs(k: int, l: float):

@@ -2,7 +2,7 @@ from typing import Literal, Callable
 from model import constants
 from model.markov_chain import TransitionGenerator, MarkovChains, Results
 from model.visualization import visualize_abr
-from model.utils import cal_body_weight
+from model.utils import cal_body_weight, count_bleeds_poisson
 from SALib.sample import saltelli
 import numpy as np
 import enlighten
@@ -28,18 +28,17 @@ def worker_function(
     annual_ajbr = annual_abr * constants.AJBR_FRACTION
     annual_ltb = annual_abr * constants.LTB_FRACTION
     annual_aebr = annual_abr - (annual_ajbr + annual_ltb)
+    annual_mortality = constants.MORTALITY_RATE
 
     # Weekly values
     wbr = annual_abr / constants.WOY  # weekly bleeding rate
     wjbr = annual_ajbr / constants.WOY  # weekly joint bleeding rate
     wltb = annual_ltb / constants.WOY  # weekly life-threatening rate
     webr = annual_aebr / constants.WOY  # weekly non-joint bleeding rate
+    wmr = annual_mortality / constants.WOY  # weekly frequency of natural dying
 
-    # annual_no_event = max(0, 52 - annual_abr)
-    # weekly_no_event = annual_no_event / constants.WEEKS_OF_YEAR
-    weekly_no_event_prob = np.exp(
-        -wbr
-    )  # Direct probability assignment for no_bleeding event
+    # Direct probability assignment for no_bleeding event
+    weekly_no_event_prob = np.exp(-wbr)
 
     chains = kwargs["chains"]
     primary_states = chains["primary"][0]
@@ -51,19 +50,19 @@ def worker_function(
         ("Healthy", "Bleeding"): (webr, "weekly"),
         ("Healthy", "Hemarthrosis"): (wjbr, "weekly"),
         ("Healthy", "LT_Bleeding"): (wltb, "weekly"),
-        ("Healthy", "Death"): (0, "weekly"),
+        ("Healthy", "Death"): (wmr, "weekly"),
         # Bleeding Transitions (competing risks)
         ("Bleeding", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
         ("Bleeding", "Bleeding"): (webr, "weekly"),
         ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
         ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
-        ("Bleeding", "Death"): (0, "weekly"),
+        ("Bleeding", "Death"): (wmr, "weekly"),
         # Hemarthrosis Transitions (competing risks)
         ("Hemarthrosis", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
         ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Arthropathy"): (constants.EARLY_ARTHROPATHY, "weekly"),
-        ("Hemarthrosis", "Death"): (0, "weekly"),
+        ("Hemarthrosis", "Death"): (wmr, "weekly"),
         # SELF_TRANSITIONS
         # ("Healthy", "Healthy"): (no_event_weekly, "weekly"),
         # ("Bleeding", "Healthy"): (no_event_weekly, "weekly"),
@@ -75,12 +74,12 @@ def worker_function(
         ("Arthropathy", "Bleeding"): (webr, "weekly"),
         ("Arthropathy", "Hemarthrosis"): (wjbr, "weekly"),
         ("Arthropathy", "LT_Bleeding"): (wltb, "weekly"),
-        ("Arthropathy", "Death"): (0, "weekly"),
+        ("Arthropathy", "Death"): (wmr, "weekly"),
         # Bleeding Transitions (competing risks)
         ("Bleeding", "Arthropathy"): (weekly_no_event_prob, None),  # Direct probability
         ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
         ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
-        ("Bleeding", "Death"): (0, "weekly"),
+        ("Bleeding", "Death"): (wmr, "weekly"),
         # Hemarthrosis Transitions (competing risks)
         ("Hemarthrosis", "Arthropathy"): (
             weekly_no_event_prob,
@@ -88,7 +87,7 @@ def worker_function(
         ),  # Direct probability
         ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
-        ("Hemarthrosis", "Death"): (0, "weekly"),
+        ("Hemarthrosis", "Death"): (wmr, "weekly"),
         # SELF_TRANSITIONS
         # ("Arthropathy", "Arthropathy"): (no_event_weekly, "weekly"),
         # ("Bleeding", "Bleeding"): (aebr_weekly, "weekly"),
@@ -122,8 +121,9 @@ def worker_function(
     # ---- Markov model setup ----
     markov = MarkovChains(
         chains=chains,
-        lambda_bleeding=webr,  # Corrected: Weekly non-joint bleeding rate
-        lambda_joint_bleeding=wjbr,  # Corrected: Weekly joint bleeding rate
+        wbr=wbr,  # Weekly bleeding rate
+        wjbr=wjbr,  # Corrected: weekly hemarthrosis rate
+        webr=webr,  # Corrected: weekly non-joint bleeding rate
         **{k: v for k, v in kwargs.items() if k != "chains"},
     )
 
@@ -136,6 +136,7 @@ def worker_function(
         case _:
             raise ValueError(f"Invalid treatment: {strategy}")
 
+    markov.add_store_function(arg_name="number_of_bleeds", func=count_bleeds_poisson)
     markov.add_reward_function(factor_func)
     markov.add_reward_function(construct_utility_reward_function(strategy))
     sequences = markov.run()
@@ -170,7 +171,6 @@ def worker_function(
         )
         for i, dose in enumerate(factor_consumption_list)
     ]
-
     # Store aggregated results
     results = Results(
         total_factor_use=total_factor_use,
@@ -179,6 +179,7 @@ def worker_function(
         annual_factor_costs=np.sum(factor_costs) / (n_cycles / constants.WOY),
         qaly=total_utility_values,
         sequences=sequences,
+        abr=np.sum(rewards["number_of_bleeds"]) / (n_cycles / constants.WOY),
     )
     return (inputs, results)
 

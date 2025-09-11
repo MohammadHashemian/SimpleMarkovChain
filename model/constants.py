@@ -17,6 +17,7 @@ WOY = 52  # Weeks of year maybe 52.14 (?) <-------------------
 LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 70 years in weeks (2, 72)
 SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
 SHORT_SIMULATION_START_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
+MORTALITY_RATE = 4.9 / 1000 # Annually over 1000 population 4.9 person dies
 # TODO: To be considered (?)
 LONG_SIMULATION_START_AGE_IN_WEEK = SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS # -> Age 12
 
