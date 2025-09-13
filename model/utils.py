@@ -203,7 +203,7 @@ def remove_outliers_robust(
     return filtered_df
 
 
-def count_bleeds_poisson(state: str, k_range=16, **kwargs) -> int:
+def count_bleeds(state: str, k_range=8, **kwargs) -> int:
     """
     Calculate the number of bleeding events in a given state using zero truncated poisson distribution.
 
@@ -214,26 +214,32 @@ def count_bleeds_poisson(state: str, k_range=16, **kwargs) -> int:
     Returns:
         int: Number of bleeding events on a single week (interval).
     """
-    if state.lower() != "bleeding" and state.lower() != "hemarthrosis":
+    state_lower = state.lower()
+    if state_lower != "bleeding" and state_lower != "hemarthrosis":
         return 0
 
     def cal():
-        lam = kwargs.get("wbr")
+        lam = kwargs.get("webr") if state_lower == "bleeding" else kwargs.get("wjbr")
         if lam is None or not isinstance(lam, (int, float)) or lam < 0:
             raise ValueError(f"Invalid lambda value for state {state}: {lam}")
-        k_values = [i for i in np.arange(1, k_range, 1)]
-        weights = []
-        for i in k_values:
-            if i == 0:
-                continue
-            weights.append(zero_truncated_mass_function(lam=lam, k=i))
-        return np.random.choice(k_values, p=weights, size=1)[0]
+        k_values = np.arange(1, k_range, 1)
+        weights = [zero_truncated_mass_function(lam=lam, k=k) for k in k_values]
+        total = sum(weights)
+        if total <= 0:
+            raise ValueError("Probabilities sum to non-positive value")
+        normalized_weights = [w / total for w in weights]
+        return np.random.choice(k_values, p=normalized_weights, size=1)[0]
 
     try:
-        count = cal()
+        return cal()
     except ValueError:
-        count = count_bleeds_poisson(state, k_range * 2, **kwargs)
-    return count
+        return count_bleeds(state, k_range * 2, **kwargs)
+
+
+def count_hemarthrosis(state: str, k_range=16, **kwargs):
+    if state.lower() != "hemarthrosis":
+        return 0
+    return count_bleeds(state, k_range, **kwargs)
 
 
 # DEPRECATED

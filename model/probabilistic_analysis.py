@@ -2,7 +2,11 @@ from typing import Literal, Callable
 from model import constants
 from model.markov_chain import TransitionGenerator, MarkovChains, Results
 from model.visualization import visualize_abr
-from model.utils import cal_body_weight, count_bleeds_poisson
+from model.utils import (
+    cal_body_weight,
+    count_bleeds,
+    count_hemarthrosis,
+)
 from SALib.sample import saltelli
 import numpy as np
 import enlighten
@@ -45,6 +49,7 @@ def worker_function(
     secondary_states = chains["secondary"][0]
 
     # ---- Transition pairs (shared across both) ----
+    # Self transitions should be avoided, probability of staying will be calculated as survival probability
     primary_transition_pairs = {
         # Healthy Transitions (competing risks)
         ("Healthy", "Bleeding"): (webr, "weekly"),
@@ -63,10 +68,6 @@ def worker_function(
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Arthropathy"): (constants.EARLY_ARTHROPATHY, "weekly"),
         ("Hemarthrosis", "Death"): (wmr, "weekly"),
-        # SELF_TRANSITIONS
-        # ("Healthy", "Healthy"): (no_event_weekly, "weekly"),
-        # ("Bleeding", "Healthy"): (no_event_weekly, "weekly"),
-        # ("Hemarthrosis", "Hemarthrosis"): (wjbr, "weekly"),
     }
 
     secondary_transition_pairs = {
@@ -81,17 +82,9 @@ def worker_function(
         ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
         ("Bleeding", "Death"): (wmr, "weekly"),
         # Hemarthrosis Transitions (competing risks)
-        ("Hemarthrosis", "Arthropathy"): (
-            weekly_no_event_prob,
-            None,
-        ),  # Direct probability
         ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
         ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
         ("Hemarthrosis", "Death"): (wmr, "weekly"),
-        # SELF_TRANSITIONS
-        # ("Arthropathy", "Arthropathy"): (no_event_weekly, "weekly"),
-        # ("Bleeding", "Bleeding"): (aebr_weekly, "weekly"),
-        # ("Hemarthrosis", "Hemarthrosis"): (wjbr, "weekly"),
     }
 
     # Primary states: ["Healthy", "Bleeding", "Hemarthrosis", "Arthropathy", "LT_Bleeding", "Death"]
@@ -136,7 +129,8 @@ def worker_function(
         case _:
             raise ValueError(f"Invalid treatment: {strategy}")
 
-    markov.add_store_function(arg_name="number_of_bleeds", func=count_bleeds_poisson)
+    markov.add_store_function("number_of_bleeds", count_bleeds)
+    markov.add_store_function("number_of_hemarthrosis", count_hemarthrosis)
     markov.add_reward_function(factor_func)
     markov.add_reward_function(construct_utility_reward_function(strategy))
     sequences = markov.run()
@@ -180,6 +174,8 @@ def worker_function(
         qaly=total_utility_values,
         sequences=sequences,
         abr=np.sum(rewards["number_of_bleeds"]) / (n_cycles / constants.WOY),
+        hemarthrosis=np.sum(rewards["number_of_hemarthrosis"])
+        / (n_cycles / constants.WOY),
     )
     return (inputs, results)
 
@@ -288,9 +284,8 @@ def markov_chains_psa_wrapper(
 def factor_consumption(
     step: int,
     state: str,
-    number_of_bleeds: int,
     strategy: Literal["on_demand", "prophylaxis"],
-    **psa_kwargs,
+    **kwargs,
 ) -> int:
     """
     Reward function that calculates factor VIII consumption per patient body weight over time.
@@ -304,10 +299,15 @@ def factor_consumption(
     Returns:
         int: Total factor VIII consumption (IU).
     """
+    try:
+        number_of_bleeds: int = kwargs["number_of_bleeds"]
+    except KeyError:
+        raise ValueError(
+            "Number of bleed is not bounded to factor consumption reward function"
+        )
     # starting treatment from age 2 yo
     weight = cal_body_weight(step, b=constants.SHORT_SIMULATION_START_AGE_IN_WEEK)
     injected_dose = 0
-
     # Add prophylaxis baseline if applicable
     injected_dose += (
         round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE)
@@ -332,51 +332,31 @@ def factor_consumption(
     return injected_dose
 
 
-def on_demand_factor_consumption(
-    step: int, state: str, number_of_bleeds: int, **psa_kwargs
-):
-    return factor_consumption(
-        step, state, number_of_bleeds, strategy="on_demand", **psa_kwargs
-    )
+def on_demand_factor_consumption(step: int, state: str, **kwargs):
+    return factor_consumption(step, state, strategy="on_demand", **kwargs)
 
 
-def prophylaxis_factor_consumption(
-    step: int, state: str, number_of_bleeds: int, **psa_kwargs
-) -> int:
-    return factor_consumption(
-        step, state, number_of_bleeds, strategy="prophylaxis", **psa_kwargs
-    )
+def prophylaxis_factor_consumption(step: int, state: str, **kwargs) -> int:
+    return factor_consumption(step, state, strategy="prophylaxis", **kwargs)
 
 
 def construct_utility_reward_function(
-    treatment: Literal["on_demand", "prophylaxis"], decrement_utility: bool = False
-) -> Callable[[int, str, int], float]:
+    treatment: Literal["on_demand", "prophylaxis"],
+) -> Callable[[int, str], float]:
     """
     Factory function to create a utility reward function.
     Tracks bleeds and applies discounting or utility decrement
     """
-    bleeds_count = [0]  # closure mutable container
+    # Closure mutable containers
+    bleeds_count = [0]
+    hemarthrosis_count = [0]
 
-    # --- Configuration ---
-    base_utilities = {
-        "on_demand": {"healthy": 0.915},
-        "prophylaxis": {"healthy": 0.915},
-    }
+    decrement_per_bleed = constants.DECREMENT_PER_BLEED[treatment]
 
-    # Default (non-healthy) utilities
-    state_utilities = {
-        "arthropathy": 0.75,
-        "bleeding": 0.60,
-        "hemarthrosis": 0.50,
-        "lt_bleeding": 0.25,
-        "death": 0.0,
-    }
-
-    # Placeholder values
-    decrement_per_bleed = {
-        "on_demand": 0.0003725,
-        "prophylaxis": 0.0018,
-    }[treatment]
+    def get_pettersson(value: float) -> int:
+        """Converts hemarthrosis bleeding count to pettersson joint health score"""
+        score = round(value / constants.PETTERSSON_CONVERSION_FACTOR)
+        return int(score)
 
     def discount(value: float, step: int) -> float:
         """Apply weekly discounting if enabled."""
@@ -385,25 +365,34 @@ def construct_utility_reward_function(
         return value
 
     def utility_reward_function(
-        step: int, state: str, number_of_bleeds: int, **kwargs
+        step: int,
+        state: str,
+        **kwargs,
     ) -> float:
         """Returns utility values for each health state with event-based decay for healthy state."""
         nonlocal bleeds_count
+        nonlocal hemarthrosis_count
         state_lower = state.lower()
 
         # Increment cumulative bleeds based on the state at this step
-        if state_lower in ["bleeding", "hemarthrosis"]:
-            bleeds_count[0] += number_of_bleeds
+        try:
+            bleeds = kwargs["number_of_bleeds"]
+            hemarthrosis = kwargs["number_of_hemarthrosis"]
+            if state_lower in ["bleeding", "hemarthrosis"]:
+                bleeds_count[0] += bleeds
+            if state_lower == "hemarthrosis":
+                hemarthrosis_count[0] += hemarthrosis
+        except KeyError:
+            raise ValueError(
+                "Keyword arguments are not present within utility reward function"
+            )
 
         if state_lower == "healthy":
-            base_u = base_utilities[treatment]["healthy"]
-            decrement = (
-                decrement_per_bleed * bleeds_count[0] if decrement_utility else 0
-            )
-            adjusted_u = max(0.65, base_u - decrement) if decrement_utility else base_u
-            utility = adjusted_u
+            score = get_pettersson(hemarthrosis_count[0])
+            category = constants.PETTERSSON_CATEGORIES[score]
+            utility = constants.STATE_UTILITIES[category]
         else:
-            utility = state_utilities.get(state_lower, 0.0)
+            utility = constants.STATE_UTILITIES[state]
 
         # Normalize to per-week utility and apply discount
         return discount(utility * (1 / 52), step)

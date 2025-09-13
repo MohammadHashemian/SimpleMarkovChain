@@ -1,4 +1,5 @@
 TODO:
+- Merge bleeds with hemarthrosis counter as a single function to boost up and avoid miscalculation
 - Mortality rate Disease and natural related cause (All Cause, Disease mortality) [Partially]
 - What is the quality of patients life with lower versus higher abrs, is that linear or exponential?
 - What is the optimal ABR value to prefer prophylaxis as cost-effective treatment?

@@ -1,6 +1,6 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
 from dataclasses import dataclass
-from model.utils import count_bleeds_poisson, prob_at_least_one
+from model.utils import count_bleeds, prob_at_least_one
 from pathlib import Path
 import numpy as np
 
@@ -26,6 +26,7 @@ class Results:
     annual_factor_costs: float
     qaly: float
     abr: float
+    hemarthrosis: float
 
 
 class MarkovChains:
@@ -42,7 +43,7 @@ class MarkovChains:
         start_chain: Name of the initial chain to use
         steps: Number of steps to simulate
         switch_conditions: Dictionary of chain names to switch condition functions
-        psa_kwargs: Additional keyword arguments for reward and switch functions
+        kwargs: Keyword arguments for reward and switch functions
     """
 
     def __init__(
@@ -52,7 +53,7 @@ class MarkovChains:
         start_chain: str,
         steps: int,
         switch_conditions: Optional[Dict[str, Callable]] = None,
-        **psa_kwargs,
+        **kwargs,
     ) -> None:
         self.chains = {
             name: (states, np.array(transitions, dtype=np.float64))
@@ -61,7 +62,7 @@ class MarkovChains:
         self.steps = steps
         self.reward_functions: List[Callable] = []
         self.rewards: Dict[str, List[float | int]] = {}
-        self.psa_kwargs = psa_kwargs
+        self.kwargs = kwargs
         self.switch_conditions = switch_conditions or {}
         self.current_chain = start_chain
         self.current_state_idx: int = 0
@@ -118,24 +119,27 @@ class MarkovChains:
             yield states[current_state_idx]
 
             # Calculate rewards
-            reward_kwargs = {}
+            # Prioritized reward functions from store
+            r_kwargs = {}
             if self.store:
-                for arg_name, func in self.store.items():
-                    reward_kwargs[arg_name] = func(
-                        state=states[current_state_idx], **self.psa_kwargs
+                for arg, func in self.store.items():
+                    r_kwargs[arg] = func(
+                        state=states[current_state_idx],
+                        chain=self.current_chain,
+                        **self.kwargs,
                     )
-                    self.rewards[arg_name].append(reward_kwargs[arg_name])
+                    self.rewards[arg].append(r_kwargs[arg])
+            # Reward functions with shared states from store reward functions
             if self.reward_functions:
                 for func in self.reward_functions:
                     r = func(
                         step=step,
                         state=states[current_state_idx],
                         chain=self.current_chain,
-                        **reward_kwargs,
-                        **self.psa_kwargs,
+                        **r_kwargs,
+                        **self.kwargs,
                     )
                     self.rewards[func.__name__].append(r)
-
             if step < self.steps:  # Skip transition for final step
                 # Check for chain switch
                 for chain_name, condition in self.switch_conditions.items():
@@ -143,17 +147,18 @@ class MarkovChains:
                         step,
                         states[current_state_idx],
                         self.current_chain,
-                        **self.psa_kwargs,
+                        **self.kwargs,
                     ):
                         self.current_chain = chain_name
                         states, transitions = self._get_current_chain()
                         assert isinstance(
                             states, list
                         ), "States must be a list of strings"
-                        if states[current_state_idx] not in states:
-                            current_state_idx = 0
-                        else:
+                        try:
                             current_state_idx = states.index(states[current_state_idx])
+                        except ValueError:
+                            print("State doesn't exist in new chain, reset to start")
+                            current_state_idx = 0
                         break
 
                 # Transition

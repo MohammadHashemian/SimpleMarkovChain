@@ -9,6 +9,33 @@ PRIMARY_STATES = [
     "Death",
 ]
 SECONDARY_STATES = ["Arthropathy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
+STATE_UTILITIES = {
+    "Healthy": 0.915,
+    "Mild_Arthropathy": 0.85,
+    "Moderate_Arthropathy": 0.80,
+    "Severe_Arthropathy": 0.75,
+    "Arthropathy": 0.75,  # Placeholder
+    "Bleeding": 0.60,
+    "Hemarthrosis": 0.50,
+    "LT_Bleeding": 0.25,
+    "Death": 0.0,
+}
+PETTERSSON_CATEGORIES = {
+    i: (
+        "Healthy"
+        if i == 0
+        else (
+            "Mild_Arthropathy"
+            if i < 5
+            else "Moderate_Arthropathy" if i < 28 else "Severe_Arthropathy"
+        )
+    )
+    for i in range(79)
+}
+DECREMENT_PER_BLEED = {
+    "on_demand": 0.0003725,
+    "prophylaxis": 0.0018,
+}  # Placeholder values
 GDP_PER_CAPITA = 4_771.4  # USD
 WTP_THRESHOLD = GDP_PER_CAPITA * 3  # USD
 
@@ -17,9 +44,11 @@ WOY = 52  # Weeks of year maybe 52.14 (?) <-------------------
 LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 70 years in weeks (2, 72)
 SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
 SHORT_SIMULATION_START_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
-MORTALITY_RATE = 4.9 / 1000 # Annually over 1000 population 4.9 person dies
+MORTALITY_RATE = 4.9 / 1000  # Annually over 1000 population 4.9 person dies
 # TODO: To be considered (?)
-LONG_SIMULATION_START_AGE_IN_WEEK = SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS # -> Age 12
+LONG_SIMULATION_START_AGE_IN_WEEK = (
+    SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS
+)  # -> Age 12
 
 # CONSIDERABLE
 AJBR_FRACTION = 0.75  # Percentage of joint bleeds from all bleed events
@@ -30,7 +59,7 @@ RIAL_USD_PRICE = 853_661  # TGJU IRR/USD
 PRICE_PER_UI_FACTOR_VIII = 58_000  # IRR, FDA
 IR_PROPHYLAXIS_WEEKLY_DOSE = 25 * 2  # IR Protocol
 STANDARD_PROPHYLAXIS_WEEKLY_DOSE = 25 * 3  # IR Protocol
-
+PETTERSSON_CONVERSION_FACTOR = 12.6
 
 # Guideline averages or PSA (?)
 BLEEDING_DOSE = 30 * 4
