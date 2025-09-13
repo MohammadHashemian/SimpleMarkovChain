@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from typing import Literal, Callable
 from model import constants
-from model.markov_chain import TransitionGenerator, MarkovChains, Results
+from model.markov_chain import TransitionGenerator, MarkovChains
 from model.visualization import visualize_abr
 from model.utils import (
     cal_body_weight,
@@ -8,9 +9,31 @@ from model.utils import (
     count_hemarthrosis,
 )
 from SALib.sample import saltelli
-import numpy as np
-import enlighten
 import multiprocessing
+import enlighten
+import numpy as np
+
+
+@dataclass
+class Results:
+    """
+    Attrs:
+        sequences: Markov chain simulated steps results
+        total_factor_use: Sum of rewards for factor viii consumption
+        total_factor_costs: Sum of rewards for factors multiplied to it's relative cost
+        annual_factor_consumption: annualized annual_factor_consumption
+        annual_Factor_costs: annualized total_factor_costs
+        qaly: Sum of qalys over simulation periods
+    """
+
+    sequences: list
+    total_factor_use: float
+    total_factor_costs: float
+    annual_factor_consumption: float
+    annual_factor_costs: float
+    qaly: float
+    abr: float
+    hemarthrosis: float
 
 
 def worker_function(
@@ -350,8 +373,6 @@ def construct_utility_reward_function(
     # Closure mutable containers
     bleeds_count = [0]
     hemarthrosis_count = [0]
-
-    decrement_per_bleed = constants.DECREMENT_PER_BLEED[treatment]
 
     def get_pettersson(value: float) -> int:
         """Converts hemarthrosis bleeding count to pettersson joint health score"""

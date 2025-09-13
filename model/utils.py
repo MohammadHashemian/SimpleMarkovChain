@@ -171,7 +171,9 @@ def remove_outliers_robust(
     X_constant = sm.add_constant(df[exog_col])
 
     # Fit robust linear model using RLM with M-estimator (HuberT is default)
-    rlm: RLMResults = sm.RLM(endog=df[endog_col], exog=X_constant, M=sm.robust.norms.HuberT()).fit()  # type: ignore
+    rlm: RLMResults = sm.RLM(
+        endog=df[endog_col], exog=X_constant, M=sm.robust.norms.HuberT()
+    ).fit()  # type: ignore
 
     # Calculate approximate Cook's distance for robust regression
     # Get standardized residuals
@@ -245,8 +247,8 @@ def count_hemarthrosis(state: str, k_range=16, **kwargs):
 # DEPRECATED
 def count_bleeds_conditional_prob(state: str, **kwargs) -> int:
     # Conditional probability formula
-    def conditional_probs(k: int, l: float):
-        return (l**k) / (math.factorial(k) * (math.exp(l) - 1))
+    def conditional_probs(k: int, lam: float):
+        return (lam**k) / (math.factorial(k) * (math.exp(lam) - 1))
 
     # Get lambda_value from kwargs
     lambda_value = (

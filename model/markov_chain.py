@@ -1,32 +1,9 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
-from dataclasses import dataclass
-from model.utils import count_bleeds, prob_at_least_one
+from model.utils import prob_at_least_one
 from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-@dataclass
-class Results:
-    """
-    Attrs:
-        sequences: Markov chain simulated steps results
-        total_factor_use: Sum of rewards for factor viii consumption
-        total_factor_costs: Sum of rewards for factors multiplied to it's relative cost
-        annual_factor_consumption: annualized annual_factor_consumption
-        annual_Factor_costs: annualized total_factor_costs
-        qaly: Sum of qalys over simulation periods
-    """
-
-    sequences: list
-    total_factor_use: float
-    total_factor_costs: float
-    annual_factor_consumption: float
-    annual_factor_costs: float
-    qaly: float
-    abr: float
-    hemarthrosis: float
 
 
 class MarkovChains:
@@ -151,9 +128,9 @@ class MarkovChains:
                     ):
                         self.current_chain = chain_name
                         states, transitions = self._get_current_chain()
-                        assert isinstance(
-                            states, list
-                        ), "States must be a list of strings"
+                        assert isinstance(states, list), (
+                            "States must be a list of strings"
+                        )
                         try:
                             current_state_idx = states.index(states[current_state_idx])
                         except ValueError:
