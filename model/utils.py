@@ -27,7 +27,7 @@ def prob_at_least_one(lam: float) -> float:
     return 1 - np.exp(-lam)
 
 
-def poisson_mass_function(lam, k, loc=0):
+def poisson_mass_function(lam: float, k: int, loc=0):
     """
     Poisson mass function(given k): exp(-λ) * ((λ)**k)/ k!
     Args:
@@ -38,19 +38,22 @@ def poisson_mass_function(lam, k, loc=0):
     return poisson.pmf(k=k, mu=lam, loc=loc)
 
 
-def zero_truncated_mass_function(lam, k):
+def zero_truncated_mass_function(lam: float, k: int) -> float:
     """
     Zero-Truncated Poisson PMF: (λ**k) / ((e**λ) -1) * k!
     Args:
         k: value(s) to evaluate the PMF at (must be integer >= 1).
-        lam: rate parameter of the underlying Poisson distribution.
+        lam: rate parameter of the underlying poisson distribution.
     """
     # The classic ZTP formula
+    if not isinstance(k, float) and not isinstance(k, int):
+        raise ValueError("invalid input")
     if k == 0:
         raise ValueError("zero is truncated")
     numerator = np.power(lam, k)
     denominator = (math.exp(lam) - 1) * math.factorial(k)
-    return numerator / denominator
+    res = numerator / denominator
+    return res
 
 
 def cal_body_weight(week: int, b: int = 0) -> float:
@@ -120,11 +123,6 @@ def plot_body_weight():
 
     plt.tight_layout()
     plt.savefig(PROJECT_ROOT / "outputs" / "figures" / "body_weight.png")
-
-
-# Call the plot function
-if __name__ == "__main__":
-    plot_body_weight()
 
 
 def remove_outliers(
@@ -205,7 +203,7 @@ def remove_outliers_robust(
     return filtered_df
 
 
-def count_bleeds(state: str, k_range=8, **kwargs) -> int:
+def count_bleeds(state: str, k_range: int = 8, **kwargs) -> int:
     """
     Calculate the number of bleeding events in a given state using zero truncated poisson distribution.
 
@@ -220,22 +218,20 @@ def count_bleeds(state: str, k_range=8, **kwargs) -> int:
     if state_lower != "bleeding" and state_lower != "hemarthrosis":
         return 0
 
-    def cal():
-        lam = kwargs.get("webr") if state_lower == "bleeding" else kwargs.get("wjbr")
-        if lam is None or not isinstance(lam, (int, float)) or lam < 0:
+    def calculate_weights():
+        lam_key = "webr" if state_lower == "bleeding" else "wjbr"
+        lam = kwargs.get(lam_key)
+        if not isinstance(lam, (int, float)) or lam < 0:
             raise ValueError(f"Invalid lambda value for state {state}: {lam}")
-        k_values = np.arange(1, k_range, 1)
-        weights = [zero_truncated_mass_function(lam=lam, k=k) for k in k_values]
+        k_array = range(1, k_range + 1, 1)
+        weights = [zero_truncated_mass_function(lam=lam, k=k) for k in k_array]
         total = sum(weights)
         if total <= 0:
             raise ValueError("Probabilities sum to non-positive value")
         normalized_weights = [w / total for w in weights]
-        return np.random.choice(k_values, p=normalized_weights, size=1)[0]
+        return int(np.random.choice(k_array, p=normalized_weights, size=1)[0])
 
-    try:
-        return cal()
-    except ValueError:
-        return count_bleeds(state, k_range * 2, **kwargs)
+    return calculate_weights()
 
 
 def count_hemarthrosis(state: str, k_range=16, **kwargs):
