@@ -1,5 +1,6 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple, Any
-
+from functools import reduce
+from collections import OrderedDict
 from pydantic import BaseModel
 from model.utils import prob_at_least_one
 from pathlib import Path
@@ -53,7 +54,7 @@ class MarkovChains:
         self.entrance = entrance
         self.current_chain_name = entrance_chain
         self.current_state_idx: int = 0
-        self.store: Dict[str, Callable] = {}
+        self.store: Dict[str, Callable] = OrderedDict()
         self.worker_kwargs = worker_kwargs
 
         # Validate all chains
@@ -109,27 +110,49 @@ class MarkovChains:
 
             # Calculate rewards
             # Prioritized reward functions from store
-            r_kwargs = {}
+            reward_functions_kwargs = {}
             if self.store:
-                for arg, func in self.store.items():
-                    r_kwargs[arg] = func(
+
+                def process_store_function(accumulated: dict, item: tuple) -> dict:
+                    arg, func = item
+                    res = func(
                         state=states[current_state_idx],
                         chain=self.current_chain_name,
                         **(self.worker_kwargs or {}),
+                        **accumulated,
                     )
-                    self.rewards[arg].append(r_kwargs[arg])
-            # Reward functions with shared states from store reward functions
+                    accumulated[arg] = res
+                    self.rewards[arg].append(res)
+                    return accumulated
+
+                reward_functions_kwargs = reduce(
+                    process_store_function, self.store.items(), {}
+                )
+
+            # Process reward functions using functional composition
             if self.reward_functions:
-                for func in self.reward_functions:
-                    r = func(
+                # Create a pipeline of reward functions
+                def apply_reward_function(func):
+                    return func(
                         step=step,
                         state=states[current_state_idx],
                         chain=self.current_chain_name,
-                        **r_kwargs,
+                        **reward_functions_kwargs,
                         **(self.worker_kwargs or {}),
                     )
-                    self.rewards[func.__name__].append(r)
-            if step < self.steps:  # Skip transition for final step
+
+                # Apply all reward functions and store results
+                list(
+                    map(
+                        lambda f: self.rewards[f.__name__].append(
+                            apply_reward_function(f)
+                        ),
+                        self.reward_functions,
+                    )
+                )
+
+            # Skip transition for final step
+            if step < self.steps:
                 # Check for chain switch
                 for chain_name, condition in self.conditions.items():
                     if chain_name != self.current_chain_name and condition(

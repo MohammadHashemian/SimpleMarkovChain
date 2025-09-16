@@ -72,6 +72,7 @@
         "mypy",
         "ncols",
         "ndarray",
+        "newaxis",
         "njit",
         "nrows",
         "numpy",

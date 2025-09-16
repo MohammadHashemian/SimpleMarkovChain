@@ -2,6 +2,7 @@ from pathlib import Path
 from statsmodels.regression.linear_model import OLSResults
 from statsmodels.robust.robust_linear_model import RLMResults
 from scipy.stats import poisson
+from sklearn.preprocessing import normalize
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,7 +39,9 @@ def poisson_mass_function(lam: float, k: int, loc=0):
     return poisson.pmf(k=k, mu=lam, loc=loc)
 
 
-def zero_truncated_mass_function(lam: float, k: int) -> float:
+def zero_truncated_mass_function(
+    lam: int | float | np.number | np.int64, k: int | float | np.number
+) -> float:
     """
     Zero-Truncated Poisson PMF: (λ**k) / ((e**λ) -1) * k!
     Args:
@@ -46,12 +49,12 @@ def zero_truncated_mass_function(lam: float, k: int) -> float:
         lam: rate parameter of the underlying poisson distribution.
     """
     # The classic ZTP formula
-    if not isinstance(k, float) and not isinstance(k, int):
-        raise ValueError("invalid input")
+    if not isinstance(k, int | float | np.number):
+        raise TypeError(f"Invalid input, expected number value, got {type(k)}")
     if k == 0:
         raise ValueError("zero is truncated")
     numerator = np.power(lam, k)
-    denominator = (math.exp(lam) - 1) * math.factorial(k)
+    denominator = (math.exp(lam) - 1) * math.factorial(int(k))
     res = numerator / denominator
     return res
 
@@ -204,41 +207,19 @@ def remove_outliers_robust(
     return filtered_df
 
 
-def count_bleeds(state: str, k_range: int = 8, **kwargs) -> int:
+# DEPRECATED
+def normalize_to_sum_to_one(array: list[float] | np.ndarray) -> np.ndarray:
     """
-    Calculate the number of bleeding events in a given state using zero truncated poisson distribution.
-
-    Args:
-        state (str): Current patient state (e.g., 'Bleeding', 'Hemarthrosis').
-        **kwargs: Additional parameters, including 'wbr','webr' and 'wjbr' to calculate lambda.
-
-    Returns:
-        int: Number of bleeding events on a single week (interval).
+    It's not actually fast, actually not really useful in my case
     """
-    state_lower = state.lower()
-    if state_lower != "bleeding" and state_lower != "hemarthrosis":
-        return 0
-
-    def calculate_weights():
-        lam_key = "webr" if state_lower == "bleeding" else "wjbr"
-        lam = kwargs.get(lam_key)
-        if not isinstance(lam, (int, float)) or lam < 0:
-            raise ValueError(f"Invalid lambda value for state {state}: {lam}")
-        k_array = range(1, k_range + 1, 1)
-        weights = [zero_truncated_mass_function(lam=lam, k=k) for k in k_array]
-        total = sum(weights)
-        if total <= 0:
-            raise ValueError("Probabilities sum to non-positive value")
-        normalized_weights = [w / total for w in weights]
-        return int(np.random.choice(k_array, p=normalized_weights, size=1)[0])
-
-    return calculate_weights()
-
-
-def count_hemarthrosis(state: str, k_range=16, **kwargs):
-    if state.lower() != "hemarthrosis":
-        return 0
-    return count_bleeds(state, k_range, **kwargs)
+    if isinstance(array, list):
+        array = np.array(array)
+    if len(array.shape) > 1:
+        raise ValueError("Array have more than 1-Dimension")
+    if np.any(array < 0):
+        raise ValueError("Array contains negative values")
+    normalized = normalize(array.reshape(-1, 1), norm="l1", axis=0).ravel()
+    return normalized
 
 
 # DEPRECATED
