@@ -1,8 +1,7 @@
-from pydantic import BaseModel
-from typing import Literal, Callable, List, Dict
+from typing import Literal, Callable, List, TypeVar, TypedDict
 from enum import StrEnum
 from model import constants
-from model.markov_chain import TransitionGenerator, MarkovChains, Chain
+from model.markov_chain import MarkovChains, MarkovResult, Chain, TransitionGenerator
 from model.visualization import visualize_abr
 import model.utils as model_util
 from SALib.sample import saltelli
@@ -10,22 +9,31 @@ import multiprocessing
 import enlighten
 import numpy as np
 
+T = TypeVar("T")
+U = TypeVar("U")
+
 
 class Treatment(StrEnum):
     ON_DEMAND = "on_demand"
     PROPHYLAXIS = "prophylaxis"
 
 
-class MarkovResult(BaseModel):
-    initial_state: str
-    final_state: str
-    steps: int
-    path: List[str]
+class HemophiliaInputs(TypedDict):
+    treatment: Treatment
+    abr: np.float64 | float
+    ajbr: np.float64 | float | None
+    wbr: np.float64 | float | None
+    wjbr: np.float64 | float | None
+    webr: np.float64 | float | None
 
 
-class HemophiliaResult(MarkovResult):
-    total_factor_use: float
-    total_factor_costs: float
+class HemophiliaOutputs(MarkovResult):
+    """
+    Specified markov model simulation results
+    """
+
+    factor_consumption: float
+    factor_costs: float
     annual_factor_consumption: float
     annual_factor_costs: float
     hemarthrosis: float
@@ -34,26 +42,26 @@ class HemophiliaResult(MarkovResult):
 
 
 def generate_population_abrs(
-    strategy: Literal["on_demand", "prophylaxis"],
+    treatment: Treatment,
     n_samples: int = 64,
     visualize: bool = True,
-):
+) -> np.ndarray:
     """
     Samples ABR values to figure the real world patient abrs distribution
 
     Args:
-        strategy: Either "on_demand" or "prophylaxis".
-        n_samples: Number of samples.
+        treatment: Either "on_demand" or "prophylaxis"
+        n_samples: Base sample size for sobol sampler
 
     Returns:
-        None
+        Numpy array
     """
-    if strategy not in ["on_demand", "prophylaxis"]:
+    if treatment not in ["on_demand", "prophylaxis"]:
         raise ValueError("Invalid strategy")
     # Published articles data for annual bleeding rate reported as (Mean, SD)
     study_data = np.array(
         constants.ON_DEMAND_ABR_REPORTS
-        if strategy == "on_demand"
+        if treatment == "on_demand"
         else constants.PROPHYLAXIS_ABR_REPORTS
     )
     num_studies = study_data.shape[0]
@@ -83,14 +91,14 @@ def generate_population_abrs(
         return max(0, np.random.gamma(k, theta))
 
     abr_values = np.array([weights_to_abr(params) for params in param_samples])
-    visualize_abr(abr_values, strategy) if visualize else None
+    visualize_abr(abr_values, treatment) if visualize else None
     return abr_values
 
 
 def worker_function(
     markov: MarkovChains,
-    worker_kwargs: Dict,
-) -> tuple[Dict, HemophiliaResult]:
+    worker_kwargs: HemophiliaInputs,
+) -> tuple[HemophiliaInputs, HemophiliaOutputs]:
     """
     Worker function for simulating Markov chains for a given ABR and strategy.
 
@@ -101,56 +109,60 @@ def worker_function(
     Returns:
         Tuple of (input_dict, Results) containing simulation inputs and outputs.
     """
-    # Unwrap kwargs
+    # ---- Unwrap key word arguments ----
     treatment: Treatment | None = worker_kwargs.get("treatment", None)
     if treatment is None or treatment not in Treatment:
         raise KeyError("Required argument not passed to worker function")
-    abr: np.float64 | None = worker_kwargs.get("abr", None)
-    if abr is None or not isinstance(abr, np.float64):
+    abr: np.float64 | float = worker_kwargs.get("abr")
+    if abr is None or not isinstance(abr, np.float64 | float):
         raise KeyError("Required arguments not passed to worker function")
-
-    # Annual values
-    ajbr = abr * constants.AJBR_FRACTION
-    altb = abr * constants.LTB_FRACTION
-    aebr = abr - (ajbr + altb)
-    amr = constants.MORTALITY_RATE
-
-    # Weekly values
-    wbr = abr / constants.WOY  # weekly bleeding rate
-    wjbr = ajbr / constants.WOY  # weekly joint bleeding rate
-    wltb = altb / constants.WOY  # weekly life-threatening rate
-    webr = aebr / constants.WOY  # weekly non-joint bleeding rate
-    wmr = amr / constants.WOY  # weekly frequency of natural dying
-
-    # Direct probability assignment for no_bleeding event
-    weekly_no_event_prob = np.exp(-wbr)
 
     chains_map = markov.chains_map
     main_chain: Chain | None = chains_map.get("main", None)
     if not main_chain:
         raise ValueError("Main chain is not provided to start simulation")
 
-    # ---- Transition pairs ----
-    # Self transitions should be avoided, probability of staying will be calculated as survival probability
-    transition_pairs = {
-        # Healthy Transitions (competing risks)
-        ("Healthy", "Bleeding"): (webr, "weekly"),
-        ("Healthy", "Hemarthrosis"): (wjbr, "weekly"),
-        ("Healthy", "LT_Bleeding"): (wltb, "weekly"),
-        ("Healthy", "Death"): (wmr, "weekly"),
-        # Bleeding Transitions (competing risks)
-        ("Bleeding", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
-        ("Bleeding", "Hemarthrosis"): (wjbr, "weekly"),
-        ("Bleeding", "LT_Bleeding"): (wltb, "weekly"),
-        ("Bleeding", "Death"): (wmr, "weekly"),
-        # Hemarthrosis Transitions (competing risks)
-        ("Hemarthrosis", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
-        ("Hemarthrosis", "Bleeding"): (webr, "weekly"),
-        ("Hemarthrosis", "LT_Bleeding"): (wltb, "weekly"),
-        ("Hemarthrosis", "Death"): (wmr, "weekly"),
+    # ---- Constructing Transition Pairs ----
+    def _to_weekly_rate(annual_rate: float) -> float:
+        return annual_rate / constants.WOY
+
+    # Annual values
+    annual_rates = {
+        "abr": abr,
+        "ajbr": abr * constants.AJBR_FRACTION,
+        "altb": abr * constants.LTB_FRACTION,
+        "aebr": (
+            abr - ((abr * constants.AJBR_FRACTION) + (abr * constants.LTB_FRACTION))
+        ),
+        "amr": constants.MORTALITY_RATE,
     }
 
-    # States: ["Healthy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
+    # Direct probability assignment for no_bleeding event
+    weekly_no_event_prob = np.exp(-_to_weekly_rate(abr))
+
+    # Self transitions should be avoided, probability of staying will be calculated as survival probability inside TransitionGenerator build function
+    transition_pairs = {
+        # Healthy Transitions (competing risks)
+        ("Healthy", "Bleeding"): (_to_weekly_rate(annual_rates["aebr"]), "weekly"),
+        ("Healthy", "Hemarthrosis"): (_to_weekly_rate(annual_rates["ajbr"]), "weekly"),
+        ("Healthy", "LT_Bleeding"): (_to_weekly_rate(annual_rates["altb"]), "weekly"),
+        ("Healthy", "Death"): (_to_weekly_rate(annual_rates["amr"]), "weekly"),
+        # Bleeding Transitions (competing risks)
+        ("Bleeding", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
+        ("Bleeding", "Hemarthrosis"): (_to_weekly_rate(annual_rates["ajbr"]), "weekly"),
+        ("Bleeding", "LT_Bleeding"): (_to_weekly_rate(annual_rates["altb"]), "weekly"),
+        ("Bleeding", "Death"): (_to_weekly_rate(annual_rates["amr"]), "weekly"),
+        # Hemarthrosis Transitions (competing risks)
+        ("Hemarthrosis", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
+        ("Hemarthrosis", "Bleeding"): (_to_weekly_rate(annual_rates["aebr"]), "weekly"),
+        ("Hemarthrosis", "LT_Bleeding"): (
+            _to_weekly_rate(annual_rates["altb"]),
+            "weekly",
+        ),
+        ("Hemarthrosis", "Death"): (_to_weekly_rate(annual_rates["amr"]), "weekly"),
+    }
+
+    # States order: ["Healthy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
     special_transitions = {
         "Death": [0.0] * (len(main_chain.states) - 1) + [1.0],  # Absorbing
         "LT_Bleeding": [0.94] + [0.0] * (len(main_chain.states) - 2) + [0.06],
@@ -162,16 +174,20 @@ def worker_function(
         transition_pairs=transition_pairs,
         special_transitions=special_transitions,
     )
-    main_chain.matrix = np.array(transition_builder.get_crm())
+    main_chain.matrix = np.array(transition_builder.build())
 
     if len(markov.worker_kwargs.keys()) != 0:
         raise ValueError("Markov chain already assigned with PSA keyword arguments")
-    markov.worker_kwargs = {
+
+    input_dict: HemophiliaInputs = {
         "treatment": treatment,
-        "wbr": wbr,
-        "wjbr": wjbr,
-        "webr": webr,
+        "abr": abr,
+        "ajbr": annual_rates["ajbr"],
+        "wbr": _to_weekly_rate(annual_rates["abr"]),
+        "wjbr": _to_weekly_rate(annual_rates["ajbr"]),
+        "webr": _to_weekly_rate(annual_rates["aebr"]),
     }
+    markov.worker_kwargs = {**input_dict}
 
     markov.add_store_function("number_of_bleeds", model_util.count_bleeds)
     markov.add_store_function("number_of_hemarthrosis", model_util.count_hemarthrosis)
@@ -183,16 +199,10 @@ def worker_function(
     # ---- Results ----
     n_cycles = markov.steps
 
-    input_dict = {
-        "abr": abr,
-        "ajbr": wjbr * constants.WOY,
-        "chains": markov.chains,
-    }
-
     _utility_func_name = construct_utility_reward_function.__name__.removeprefix(
         "construct_"
     )
-    sum_factor_consumption = np.sum(rewards[factor_consumption.__name__][1:])
+    sum_factor_consumptions = np.sum(rewards[factor_consumption.__name__][1:])
     sum_utilities = np.sum(rewards[_utility_func_name][1:])
     factor_sequence: list = rewards[factor_consumption.__name__][1:]
 
@@ -220,7 +230,7 @@ def worker_function(
             cost = cost / (1 + constants.DISCOUNT_RATE_WEEKLY) ** n
         return cost
 
-    def to_annual(array: List | np.ndarray):
+    def _to_annual(array: List | np.ndarray):
         if isinstance(array, List):
             array = np.array(array)
         return array / (n_cycles / constants.WOY)
@@ -228,31 +238,42 @@ def worker_function(
     # Costs (corrected for consistent discounting and currency conversion)
     factor_costs = [_to_cost(dose, i) for i, dose in enumerate(factor_sequence)]
     # Store aggregated results
-    output = HemophiliaResult(
+    output = HemophiliaOutputs(
         initial_state=markov.entrance,
         final_state=sequences[-1:][0],
         steps=n_cycles,
         path=sequences,
-        total_factor_use=sum_factor_consumption,
-        total_factor_costs=np.sum(factor_costs),
-        annual_factor_consumption=to_annual(sum_factor_consumption), # type: ignore
-        annual_factor_costs=np.sum(to_annual(factor_costs)),
+        factor_consumption=sum_factor_consumptions,
+        factor_costs=np.sum(factor_costs),
+        annual_factor_consumption=_to_annual(sum_factor_consumptions),  # type: ignore
+        annual_factor_costs=np.sum(_to_annual(factor_costs)),
+        hemarthrosis=_to_annual(np.sum(rewards["number_of_hemarthrosis"])),  # type: ignore
         qaly=sum_utilities,
-        abr=np.sum(to_annual(rewards["number_of_bleeds"])),
-        hemarthrosis=np.sum(to_annual(rewards["number_of_hemarthrosis"])),
+        abr=_to_annual(np.sum(rewards["number_of_bleeds"])),  # type: ignore
     )
     return (input_dict, output)
 
 
-def psa_wrapper(
+def parallelize_markov_chain(
     simulation_name: str,
-    worker_inputs: list,
-    worker_func: Callable,
+    worker_inputs: list[T],
+    worker_func: Callable[[MarkovChains, T], tuple[T, U]],
     markov_chain: MarkovChains,
-) -> tuple[list, list]:
+) -> tuple[list[T], list[U]]:
     """
+    Summary
+    -------
+    Gets a worker function with its arguments as a list of dictionaries,
+    then uses multiprocessing to pass each dictionary to worker function and returns the results.
+
     Args:
-        markov_chain: markov chain class instance to parallelize
+        simulation_name: name to be shown on progress bar
+        worker_inputs: list of keyword arguments to worker_function
+        worker_function: a function that should accept the markov_chain and input dictionaries
+        markov_chain: markov chain class instance to parallelize within worker function
+
+    Returns:
+        tuple: of ([inputs], [outputs])
     """
     model_inputs = []
     model_outputs = []
@@ -286,6 +307,9 @@ def psa_wrapper(
             model_outputs.append(output)
     manager.stop()
     return model_inputs, model_outputs
+
+
+# Reward functions
 
 
 def factor_consumption(
@@ -352,8 +376,9 @@ def factor_consumption(
     return injected_dose
 
 
+# TODO: Revise with new struct
 def construct_utility_reward_function(
-    treatment: Literal["on_demand", "prophylaxis"],
+    treatment: Treatment,
 ) -> Callable[[int, str], float]:
     """
     Factory function to create a utility reward function.

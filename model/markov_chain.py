@@ -1,4 +1,6 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple, Any
+
+from pydantic import BaseModel
 from model.utils import prob_at_least_one
 from pathlib import Path
 import numpy as np
@@ -165,6 +167,17 @@ class MarkovChains:
         return list(self.walk())
 
 
+class MarkovResult(BaseModel):
+    """
+    Common returned results from markov models simulations
+    """
+
+    initial_state: str
+    final_state: str
+    steps: int
+    path: List[str]
+
+
 class TransitionGenerator:
     def __init__(
         self,
@@ -255,7 +268,7 @@ class TransitionGenerator:
             )
         return prob_at_least_one(lam_ts)
 
-    def get_crm(self) -> List[List[float]]:
+    def build(self) -> List[List[float]]:
         """
         Construct discrete-time approximation of a continuous-time events by
         converting continuous transition rates (λ) into discrete transition
@@ -377,7 +390,7 @@ class TransitionGenerator:
         return matrix
 
     # Deprecated
-    def get_restricted_crm(self) -> List[List[float]]:
+    def build_restricted(self) -> List[List[float]]:
         """
         Build the transition probability matrix for the Markov model.
 
