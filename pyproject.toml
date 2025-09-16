@@ -1,10 +1,10 @@
 [project]
-name = "Hemophilia Cost Utility"
+name = "Hemophilia_Cost_Utility"
 version = "0.7"
 description = "Discrete markov chain simulation for analyzing cost effectiveness of hemophilia A interventions"
-license = {text = "MIT"}
+license = { text = "MIT" }
 authors = [
-  {name = "Mohammad Hashemian", email = "muhammadhashemian@gmail.com"}
+  { name = "Mohammad Hashemian", email = "muhammadhashemian@gmail.com" },
 ]
 
 readme = "README.md"
@@ -12,41 +12,39 @@ readme = "README.md"
 [tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "INFO"
-pythonpath = [
-  "."
-]
+pythonpath = ["."]
 log_cli_format = "%(filename)s:%(lineno)s:[%(levelname)s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
-[tool.mypy]
-plugins = ["returns.contrib.mypy.returns_plugin"]
-ignore_missing_imports = true
-strict = true
-local_partial_types = true
-warn_unreachable = true
+# [tool.mypy]
+# plugins = ["returns.contrib.mypy.returns_plugin"]
+# ignore_missing_imports = true
+# strict = true
+# local_partial_types = true
+# warn_unreachable = true
 
-enable_error_code = [
-  "truthy-bool",
-  "truthy-iterable",
-  "redundant-expr",
-  "unused-awaitable",
-  "possibly-undefined",
-  "redundant-self",
-  "unimported-reveal",
-  "deprecated",
-  "exhaustive-match",
-]
+# enable_error_code = [
+#   "truthy-bool",
+#   "truthy-iterable",
+#   "redundant-expr",
+#   "unused-awaitable",
+#   "possibly-undefined",
+#   "redundant-self",
+#   "unimported-reveal",
+#   "deprecated",
+#   "exhaustive-match",
+# ]
 
-disable_error_code = [
-  "no-untyped-def", # TODO: fix
-]
+# disable_error_code = [
+#   "no-untyped-def", 
+# ]
 
-[[tool.mypy.overrides]]
-module = "wemake_python_styleguide.compat.nodes"
-# We allow explicit `Any` only in this file, because of the compatibility:
-disallow_any_explicit = false
+# [[tool.mypy.overrides]]
+# module = "wemake_python_styleguide.compat.nodes"
+# # We allow explicit `Any` only in this file, because of the compatibility:
+# disallow_any_explicit = false
 
-[[tool.mypy.overrides]]
-module = "wemake_python_styleguide.compat.packaging"
-# We allow unused `ignore` comments, because we cannot sync it between versions:
-warn_unused_ignores = false
+# [[tool.mypy.overrides]]
+# module = "wemake_python_styleguide.compat.packaging"
+# # We allow unused `ignore` comments, because we cannot sync it between versions:
+# warn_unused_ignores = false

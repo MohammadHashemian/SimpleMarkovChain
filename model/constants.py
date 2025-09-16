@@ -1,14 +1,12 @@
 # SOLID VALUES
 START_STATE = "Healthy"
-PRIMARY_STATES = [
+STATES = [
     "Healthy",
     "Bleeding",
     "Hemarthrosis",
-    "Arthropathy",
     "LT_Bleeding",
     "Death",
 ]
-SECONDARY_STATES = ["Arthropathy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
 STATE_UTILITIES = {
     "Healthy": 0.915,
     "Mild_Arthropathy": 0.85,
@@ -27,15 +25,42 @@ PETTERSSON_CATEGORIES = {
         else (
             "Mild_Arthropathy"
             if i < 5
-            else "Moderate_Arthropathy" if i < 28 else "Severe_Arthropathy"
+            else "Moderate_Arthropathy"
+            if i < 28
+            else "Severe_Arthropathy"
         )
     )
-    for i in range(79)
+    for i in range(80)
 }
 DECREMENT_PER_BLEED = {
     "on_demand": 0.0003725,
     "prophylaxis": 0.0018,
 }  # Placeholder values
+ON_DEMAND_ABR_REPORTS = [
+    [58.3, 26.9],  # Zhao et al.
+    [37.2, 19.9],  # Manco-Johnson MJ et al.
+    [19.5, 15.0],  # Tagliaferri A et al.
+    [17.7, 11.7],  # Tagliaferri A et al.
+    # [13, 0],  # Gringeri A et al.
+    [13, 12],  # Gringeri A et al. synthetic
+    [7.4, 9.5],  # Romanová G et al.
+    [13.2, 12.43],  # Berntorp E et al.
+    [14.0, 12.3],  # Khair K et al.
+    [18.4, 14.2],  # Khair K et al.
+    [15.8, 8.13],  # Khair K et al.
+]
+PROPHYLAXIS_ABR_REPORTS = [
+    [2.5, 4.6],  # Zhao et al.
+    [2.5, 4.7],  # Manco-Johnson MJ et al.
+    [2.6, 2.2],  # Tagliaferri A et al.
+    [4.5, 7.1],  # Tagliaferri A et al.
+    [6.3, 0],  # Gringeri A et al.
+    [2.1, 2.1],  # Romanová G et al.
+    [4.26, 5.97],  # Berntorp E et al.
+    [3.5, 4.3],  # Khair K et al.
+    [3.3, 4.1],  # Khair K et al.
+    [3.7, 3.9],  # Khair K et al.
+]
 GDP_PER_CAPITA = 4_771.4  # USD
 WTP_THRESHOLD = GDP_PER_CAPITA * 3  # USD
 
@@ -70,6 +95,8 @@ LT_BLEEDING_DOSE = 550
 WILLINGNESS_TO_PAY_THRESHOLD_IRR = None
 LATE_ARTHROPATHY = None
 
+REPORT_PPP = False
+REPORT_UNIT = "USD"
 PPP_CONVERSION_FACTOR = 117_170  # World Bank 2024 IRR/USD, PPP
 # PPP_CONVERSION_FACTOR = 165_354  # Y_CHART | IMF 2025 IRR/USD, PPP
 

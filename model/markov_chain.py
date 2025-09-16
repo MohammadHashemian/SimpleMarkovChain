@@ -1,9 +1,19 @@
-from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple
+from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple, Any
 from model.utils import prob_at_least_one
 from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class Chain:
+    def __init__(self, name: str, states: List[str], matrix: np.ndarray) -> None:
+        self.name = name
+        self.states = states
+        self.matrix = matrix
+
+        if matrix.shape != (len(states), len(states)):
+            raise ValueError("Transition matrix should be in cubic shape")
 
 
 class MarkovChains:
@@ -15,56 +25,55 @@ class MarkovChains:
     Initialize Markov chain with multiple chains, transitions, and optional reward function.
 
     Args:
-        chains: Dictionary of chain names to (states, transition_matrix) tuples
-        start_state: Initial state for the chain
-        start_chain: Name of the initial chain to use
+        chains: List of chain objects
+        entrance: Initial state for the chain to start with
+        entrance_chain: Name of the initial chain to use
         steps: Number of steps to simulate
-        switch_conditions: Dictionary of chain names to switch condition functions
-        kwargs: Keyword arguments for reward and switch functions
+        conditions: Dictionary containing target chain name and the switch condition function
+        worker_kwargs: Keyword arguments which will be pass to reward and switch functions on call
     """
 
     def __init__(
         self,
-        chains: Dict[str, Tuple[List[str], Union[List[List[float]], np.ndarray]]],
-        start_state: str,
-        start_chain: str,
+        chains: List["Chain"],
+        entrance: str,
+        entrance_chain: str,
         steps: int,
-        switch_conditions: Optional[Dict[str, Callable]] = None,
-        **kwargs,
+        conditions: Optional[Dict[str, Callable]] = None,
+        worker_kwargs: Dict[str, Any] = {},
     ) -> None:
-        self.chains = {
-            name: (states, np.array(transitions, dtype=np.float64))
-            for name, (states, transitions) in chains.items()
-        }
+        self.chains = chains
+        self.chains_map = {chain.name: chain for chain in chains}
         self.steps = steps
         self.reward_functions: List[Callable] = []
         self.rewards: Dict[str, List[float | int]] = {}
-        self.kwargs = kwargs
-        self.switch_conditions = switch_conditions or {}
-        self.current_chain = start_chain
+        self.conditions = conditions or {}
+        self.entrance = entrance
+        self.current_chain_name = entrance_chain
         self.current_state_idx: int = 0
         self.store: Dict[str, Callable] = {}
+        self.worker_kwargs = worker_kwargs
 
         # Validate all chains
-        for chain_name, (states, transitions) in self.chains.items():
-            if transitions.shape != (len(states), len(states)):
+        for chain in self.chains:
+            if chain.matrix.shape != (len(chain.states), len(chain.states)):
                 raise ValueError(
-                    f"Chain '{chain_name}': Expected {len(states)}x{len(states)} transition matrix, got {transitions.shape}"
+                    f"Chain '{chain.name}': Expected {len(chain.states)}x{len(chain.states)} transition matrix, got {chain.matrix.shape}"
                 )
-            if not np.allclose(transitions.sum(axis=1), 1, rtol=1e-5):
+            if not np.allclose(chain.matrix.sum(axis=1), 1, rtol=1e-5):
                 raise ValueError(
-                    f"Chain '{chain_name}': Each row in the transition matrix must sum to 1"
+                    f"Chain '{chain.name}': Each row in the transition matrix must sum to 1"
                 )
-            if chain_name == start_chain and start_state not in states:
+            if chain.name == entrance_chain and entrance not in chain.states:
                 raise ValueError(
-                    f"Start state '{start_state}' not in states list of chain '{start_chain}'"
+                    f"Start state '{entrance}' not in states list of chain '{entrance_chain}'"
                 )
 
-        if start_chain not in self.chains:
-            raise ValueError(f"Start chain '{start_chain}' not in provided chains")
+        if entrance_chain not in self.chains_map.keys():
+            raise ValueError(f"Start chain '{entrance_chain}' not in provided chains")
 
         # Set initial state index
-        self.current_state_idx = self.chains[start_chain][0].index(start_state)
+        self.current_state_idx = self.chains_map[entrance_chain].states.index(entrance)
 
     def add_reward_function(self, func: Callable) -> None:
         """Add a reward function to be calculated at each step."""
@@ -79,9 +88,9 @@ class MarkovChains:
         self.store[arg_name] = func
         self.rewards[arg_name] = []
 
-    def _get_current_chain(self) -> tuple[List[str], np.ndarray]:
-        """Return active states and transitions."""
-        return self.chains[self.current_chain]
+    def _get_current_chain(self) -> Chain:
+        """Returns the active chain for states and transition extractions"""
+        return self.chains_map[self.current_chain_name]
 
     def walk(self, steps: Optional[int] = None) -> Generator[str, None, None]:
         """Generate a sequence of states for the specified number of steps."""
@@ -89,7 +98,8 @@ class MarkovChains:
             self.steps = steps
 
         current_state_idx: int = self.current_state_idx
-        states, transitions = self._get_current_chain()
+        current_chain: Chain = self._get_current_chain()
+        states, transitions = current_chain.states, current_chain.matrix
         assert isinstance(states, list), "States must be a list of strings"
 
         for step in range(self.steps + 1):  # Include final state
@@ -102,8 +112,8 @@ class MarkovChains:
                 for arg, func in self.store.items():
                     r_kwargs[arg] = func(
                         state=states[current_state_idx],
-                        chain=self.current_chain,
-                        **self.kwargs,
+                        chain=self.current_chain_name,
+                        **(self.worker_kwargs or {}),
                     )
                     self.rewards[arg].append(r_kwargs[arg])
             # Reward functions with shared states from store reward functions
@@ -112,22 +122,26 @@ class MarkovChains:
                     r = func(
                         step=step,
                         state=states[current_state_idx],
-                        chain=self.current_chain,
+                        chain=self.current_chain_name,
                         **r_kwargs,
-                        **self.kwargs,
+                        **(self.worker_kwargs or {}),
                     )
                     self.rewards[func.__name__].append(r)
             if step < self.steps:  # Skip transition for final step
                 # Check for chain switch
-                for chain_name, condition in self.switch_conditions.items():
-                    if chain_name != self.current_chain and condition(
+                for chain_name, condition in self.conditions.items():
+                    if chain_name != self.current_chain_name and condition(
                         step,
                         states[current_state_idx],
-                        self.current_chain,
-                        **self.kwargs,
+                        self.current_chain_name,
+                        **(self.worker_kwargs or {}),
                     ):
-                        self.current_chain = chain_name
-                        states, transitions = self._get_current_chain()
+                        self.current_chain_name = chain_name
+                        current_active_chain = self._get_current_chain()
+                        states, transitions = (
+                            current_active_chain.states,
+                            current_active_chain.matrix,
+                        )
                         assert isinstance(states, list), (
                             "States must be a list of strings"
                         )

@@ -60,6 +60,7 @@ def cal_body_weight(week: int, b: int = 0) -> float:
     """
     Estimates male body weight in kg using Gompertz growth model (0-50 years)
     and linear decline (50-73 years) based on WHO/CDC data.
+    Does not support numpy vectorization yet
 
     Gompertz parameters optimized for key milestones:
     - Birth (0 weeks): 3.3 kg
@@ -75,11 +76,11 @@ def cal_body_weight(week: int, b: int = 0) -> float:
         float: Estimated weight in kg, rounded to 2 decimals
 
     Raises:
-        TypeError: For invalid input
+        ValueError: For invalid input
     """
     week += b
     if not isinstance(week, int) or week < 0 or week > 3796:
-        raise TypeError("Week must be an integer between 0 and 3796")
+        raise ValueError("Week must be an integer between 0 and 3796")
 
     # Optimized Gompertz parameters for growth phase (0-2600 weeks)
     A = 80.5  # Asymptotic weight (kg)
