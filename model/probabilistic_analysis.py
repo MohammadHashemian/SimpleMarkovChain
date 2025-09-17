@@ -1,4 +1,4 @@
-from typing import Literal, Callable, List, TypeVar, Unpack
+from typing import Literal, List, Unpack
 from model import constants
 from model.markov_chain import MarkovChains, Chain, TransitionGenerator
 from model.types import (
@@ -11,12 +11,7 @@ from model.utils import zero_truncated_mass_function
 from model.visualization import visualize_abr
 import model.utils as model_util
 from SALib.sample import saltelli
-import multiprocessing
-import enlighten
 import numpy as np
-
-T = TypeVar("T")
-U = TypeVar("U")
 
 
 def sample_population_abrs(
@@ -226,61 +221,6 @@ def worker_function(
         pettersson_score=rewards["pettersson_score"],
     )
     return (input_dict, output_dict)
-
-
-def parallelize_markov_chain(
-    simulation_name: str,
-    worker_inputs: list[T],
-    worker_func: Callable[[MarkovChains, T], tuple[T, U]],
-    markov_chain: MarkovChains,
-) -> tuple[list[T], list[U]]:
-    """
-    Summary
-    -------
-    Gets a worker function with its arguments as a list of dictionaries,
-    then uses multiprocessing to pass each dictionary to worker function and returns the results.
-
-    Args:
-        simulation_name: name to be shown on progress bar
-        worker_inputs: list of keyword arguments to worker_function
-        worker_function: a function that should accept the markov_chain and input dictionaries
-        markov_chain: markov chain class instance to parallelize within worker function
-
-    Returns:
-        tuple: of ([inputs], [outputs])
-    """
-    model_inputs = []
-    model_outputs = []
-
-    manager = enlighten.get_manager()
-    progress_bar: enlighten.Counter = manager.counter(
-        total=len(worker_inputs),
-        desc=f"Simulating {simulation_name}:",
-        unit="simulation",
-    )
-
-    def update_bar(_):
-        progress_bar.update(incr=1)
-
-    def error_handler(e: BaseException):
-        raise ValueError(f"simulation failed {e}")
-
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        async_results = [
-            pool.apply_async(
-                func=worker_func,
-                args=(markov_chain, worker_kwargs),
-                callback=update_bar,
-                error_callback=error_handler,
-            )
-            for worker_kwargs in worker_inputs
-        ]
-        for res in async_results:
-            input_dict, output = res.get()
-            model_inputs.append(input_dict)
-            model_outputs.append(output)
-    manager.stop()
-    return model_inputs, model_outputs
 
 
 def factor_consumption(

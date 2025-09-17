@@ -1,11 +1,27 @@
-from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple, Any
+from typing import (
+    List,
+    Union,
+    Generator,
+    Optional,
+    Callable,
+    Dict,
+    Literal,
+    Tuple,
+    Any,
+    TypeVar,
+)
 from collections import OrderedDict
 from pydantic import BaseModel
 from model.utils import prob_at_least_one
 from pathlib import Path
 import numpy as np
+import enlighten
+import multiprocessing
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+T = TypeVar("T")
+U = TypeVar("U")
 
 
 class Chain:
@@ -501,3 +517,58 @@ class TransitionGenerator:
             matrix[idx] = probs
 
         return matrix
+
+
+def parallelize_markov_chain(
+    simulation_name: str,
+    worker_inputs: list[T],
+    worker_func: Callable[[MarkovChains, T], tuple[T, U]],
+    markov_chain: MarkovChains,
+) -> tuple[list[T], list[U]]:
+    """
+    Summary
+    -------
+    Gets a worker function with its arguments as a list of dictionaries,
+    then uses multiprocessing to pass each dictionary to worker function and returns the results.
+
+    Args:
+        simulation_name: name to be shown on progress bar
+        worker_inputs: list of keyword arguments to worker_function
+        worker_function: a function that should accept the markov_chain and input dictionaries
+        markov_chain: markov chain class instance to parallelize within worker function
+
+    Returns:
+        tuple: of ([inputs], [outputs])
+    """
+    model_inputs = []
+    model_outputs = []
+
+    manager = enlighten.get_manager()
+    progress_bar: enlighten.Counter = manager.counter(
+        total=len(worker_inputs),
+        desc=f"Simulating {simulation_name}:",
+        unit="simulation",
+    )
+
+    def update_bar(_):
+        progress_bar.update(incr=1)
+
+    def error_handler(e: BaseException):
+        raise ValueError(f"simulation failed {e}")
+
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        async_results = [
+            pool.apply_async(
+                func=worker_func,
+                args=(markov_chain, worker_kwargs),
+                callback=update_bar,
+                error_callback=error_handler,
+            )
+            for worker_kwargs in worker_inputs
+        ]
+        for res in async_results:
+            input_dict, output = res.get()
+            model_inputs.append(input_dict)
+            model_outputs.append(output)
+    manager.stop()
+    return model_inputs, model_outputs

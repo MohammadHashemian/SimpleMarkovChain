@@ -28,6 +28,7 @@
         "dotenv",
         "EABR",
         "edgecolor",
+        "edgecolors",
         "endog",
         "exog",
         "facecolor",
