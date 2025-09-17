@@ -1,5 +1,4 @@
 from typing import List, Union, Generator, Optional, Callable, Dict, Literal, Tuple, Any
-from functools import reduce
 from collections import OrderedDict
 from pydantic import BaseModel
 from model.utils import prob_at_least_one
@@ -43,21 +42,26 @@ class MarkovChains:
         entrance_chain: str,
         steps: int,
         conditions: Optional[Dict[str, Callable]] = None,
-        worker_kwargs: Dict[str, Any] = {},
+        worker_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        self.steps = steps
         self.chains = chains
         self.chains_map = {chain.name: chain for chain in chains}
-        self.steps = steps
+        self.conditions = conditions or {}
+        self.worker_kwargs = worker_kwargs or {}
         self.reward_functions: List[Callable] = []
         self.rewards: Dict[str, List[float | int]] = {}
-        self.conditions = conditions or {}
         self.entrance = entrance
         self.current_chain_name = entrance_chain
-        self.current_state_idx: int = 0
         self.store: Dict[str, Callable] = OrderedDict()
-        self.worker_kwargs = worker_kwargs
 
-        # Validate all chains
+        # Validate chains
+        if entrance_chain not in self.chains_map.keys():
+            raise ValueError(f"Start chain '{entrance_chain}' not in provided chains")
+        if entrance not in self.chains_map[entrance_chain].states:
+            raise ValueError(
+                f"Start state '{entrance}' not in states list of chain '{entrance_chain}'"
+            )
         for chain in self.chains:
             if chain.matrix.shape != (len(chain.states), len(chain.states)):
                 raise ValueError(
@@ -67,13 +71,6 @@ class MarkovChains:
                 raise ValueError(
                     f"Chain '{chain.name}': Each row in the transition matrix must sum to 1"
                 )
-            if chain.name == entrance_chain and entrance not in chain.states:
-                raise ValueError(
-                    f"Start state '{entrance}' not in states list of chain '{entrance_chain}'"
-                )
-
-        if entrance_chain not in self.chains_map.keys():
-            raise ValueError(f"Start chain '{entrance_chain}' not in provided chains")
 
         # Set initial state index
         self.current_state_idx = self.chains_map[entrance_chain].states.index(entrance)
@@ -97,59 +94,36 @@ class MarkovChains:
 
     def walk(self, steps: Optional[int] = None) -> Generator[str, None, None]:
         """Generate a sequence of states for the specified number of steps."""
-        if steps is not None:
-            self.steps = steps
-
+        steps = steps if steps is not None else self.steps
         current_state_idx: int = self.current_state_idx
         current_chain: Chain = self._get_current_chain()
         states, transitions = current_chain.states, current_chain.matrix
-        assert isinstance(states, list), "States must be a list of strings"
 
         for step in range(self.steps + 1):  # Include final state
             yield states[current_state_idx]
 
-            # Calculate rewards
-            # Prioritized reward functions from store
-            reward_functions_kwargs = {}
-            if self.store:
-
-                def process_store_function(accumulated: dict, item: tuple) -> dict:
-                    arg, func = item
-                    res = func(
-                        state=states[current_state_idx],
-                        chain=self.current_chain_name,
-                        **(self.worker_kwargs or {}),
-                        **accumulated,
-                    )
-                    accumulated[arg] = res
-                    self.rewards[arg].append(res)
-                    return accumulated
-
-                reward_functions_kwargs = reduce(
-                    process_store_function, self.store.items(), {}
+            # Process store functions
+            reward_kwargs = {}
+            for arg, func in self.store.items():
+                res = func(
+                    state=states[current_state_idx],
+                    chain=self.current_chain_name,
+                    **self.worker_kwargs,
+                    **reward_kwargs,
                 )
+                reward_kwargs[arg] = res
+                self.rewards[arg].append(res)
 
-            # Process reward functions using functional composition
-            if self.reward_functions:
-                # Create a pipeline of reward functions
-                def apply_reward_function(func):
-                    return func(
-                        step=step,
-                        state=states[current_state_idx],
-                        chain=self.current_chain_name,
-                        **reward_functions_kwargs,
-                        **(self.worker_kwargs or {}),
-                    )
-
-                # Apply all reward functions and store results
-                list(
-                    map(
-                        lambda f: self.rewards[f.__name__].append(
-                            apply_reward_function(f)
-                        ),
-                        self.reward_functions,
-                    )
+            # Process reward functions
+            for func in self.reward_functions:
+                reward = func(
+                    step=step,
+                    state=states[current_state_idx],
+                    chain=self.current_chain_name,
+                    **reward_kwargs,
+                    **self.worker_kwargs,
                 )
+                self.rewards[func.__name__].append(reward)
 
             # Skip transition for final step
             if step < self.steps:
@@ -159,16 +133,13 @@ class MarkovChains:
                         step,
                         states[current_state_idx],
                         self.current_chain_name,
-                        **(self.worker_kwargs or {}),
+                        **self.worker_kwargs,
                     ):
                         self.current_chain_name = chain_name
                         current_active_chain = self._get_current_chain()
                         states, transitions = (
                             current_active_chain.states,
                             current_active_chain.matrix,
-                        )
-                        assert isinstance(states, list), (
-                            "States must be a list of strings"
                         )
                         try:
                             current_state_idx = states.index(states[current_state_idx])
