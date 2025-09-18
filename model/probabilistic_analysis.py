@@ -73,7 +73,7 @@ def worker_function(
     worker_kwargs: HemophiliaInput,
 ) -> tuple[HemophiliaInput, HemophiliaOutput]:
     """
-    Worker function for simulating Markov chains for a given ABR and strategy
+    Single markov model initializer function for given annual bleeding rate and treatment arm
 
     Args:
         worker_kwargs: Worker function keyword arguments
