@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from statsmodels.robust.robust_linear_model import RLMResults
 from model.utils import cal_body_weight, remove_outliers_robust
 from src.utils.logger import get_logger
 import model.constants as constants
@@ -88,13 +87,21 @@ def extract(
             "qalys": prophylaxis_utilities,
         }
     )
-    
+
     # Should it be applied on overall results or year by year (?)
-    od_per_kg = on_demand_df["annual_factor_use"].apply(lambda x: x/np.mean(body_weights))
-    pro_per_kg = prophylaxis_df["annual_factor_use"].apply(lambda x: x/np.mean(body_weights))
-    logger.info(f"On Demand Mean annual consumption per mean body weight: {od_per_kg.mean():.0f}")
-    logger.info(f"Prophylaxis Mean annual consumption per mean body weight: {pro_per_kg.mean():.0f}")
-    
+    od_per_kg = on_demand_df["annual_factor_use"].apply(
+        lambda x: x / np.mean(body_weights)
+    )
+    pro_per_kg = prophylaxis_df["annual_factor_use"].apply(
+        lambda x: x / np.mean(body_weights)
+    )
+    logger.info(
+        f"On Demand Mean annual consumption per mean body weight: {od_per_kg.mean():.0f}"
+    )
+    logger.info(
+        f"Prophylaxis Mean annual consumption per mean body weight: {pro_per_kg.mean():.0f}"
+    )
+
     # Remove outliers
     if remove_outliers:
         on_demand_df = remove_outliers_robust(
@@ -122,14 +129,14 @@ def extract(
     deltas = [(p[0] - o[0], p[1] - o[1], p[2] - o[2]) for o, p in pairs]
     dC = [d[0] for d in deltas]
     dQ = [d[1] for d in deltas]
-    dABR = [d[2] for d in deltas]  # report as secondary
-    
+    # dABR = [d[2] for d in deltas]  # report as secondary
+
     # Point estimate ICER (ratio of means)
     mean_dC = np.mean(dC)
     mean_dQ = np.mean(dQ)
 
-    logger.info(f"Point estimate ICER (ratio of means) ${mean_dC/mean_dQ:,.0f}")
-    
+    logger.info(f"Point estimate ICER (ratio of means) ${mean_dC / mean_dQ:,.0f}")
+
     # Bootstrap ICER for uncertainty
     n_bootstraps = 1000
     bootstrap_icers = []
@@ -143,7 +150,7 @@ def extract(
     if bootstrap_icers:
         ci_lower, ci_upper = np.percentile(bootstrap_icers, [2.5, 97.5])
         logger.info(f"95% CI for ICER: ${ci_lower:,.0f} to ${ci_upper:,.0f}")
-        
+
     icer_pairs = [
         (
             p[0] - o[0],  # Δ Cost
@@ -190,13 +197,13 @@ def extract(
     total = len(icer_pairs)
     if total > 0:
         logger.info("Categorized ICER pairs:")
-        logger.info(f"Dominant: {len(dom)} ({len(dom)/total:.2%})")
-        logger.info(f"Dominated: {len(dmd)} ({len(dmd)/total:.2%})")
+        logger.info(f"Dominant: {len(dom)} ({len(dom) / total:.2%})")
+        logger.info(f"Dominated: {len(dmd)} ({len(dmd) / total:.2%})")
         logger.info(
-            f"Lower cost, lower effectiveness: {len(lce)} ({len(lce)/total:.2%})"
+            f"Lower cost, lower effectiveness: {len(lce)} ({len(lce) / total:.2%})"
         )
-        logger.info(f"Cost-effective: {len(ce)} ({len(ce)/total:.2%})")
-        logger.info(f"Not cost-effective: {len(nce)} ({len(nce)/total:.2%})")
+        logger.info(f"Cost-effective: {len(ce)} ({len(ce) / total:.2%})")
+        logger.info(f"Not cost-effective: {len(nce)} ({len(nce) / total:.2%})")
     else:
         logger.warning("No ICER pairs to categorize")
 
@@ -244,7 +251,7 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
     # Robust regression for On-Demand
     X_od = sm.add_constant(on_demand_df["abr"])
     rlm_od = sm.RLM(on_demand_df["consumption"], X_od, M=sm.robust.norms.HuberT())
-    od_rlm_results: RLMResults = rlm_od.fit()  # type: ignore
+    od_rlm_results = rlm_od.fit()  # type: ignore
     scatter_ax.plot(
         on_demand_df["abr"],
         od_rlm_results.predict(X_od),
@@ -255,7 +262,7 @@ def plot_consumption_vs_abr(data: DataExtract) -> Figure:
     # Robust regression for Prophylaxis
     X_pro = sm.add_constant(prophylaxis_df["abr"])
     rlm_pro = sm.RLM(prophylaxis_df["consumption"], X_pro, M=sm.robust.norms.HuberT())
-    pro_rlm_results: RLMResults = rlm_pro.fit()  # type: ignore
+    pro_rlm_results = rlm_pro.fit()  # type: ignore
     scatter_ax.plot(
         prophylaxis_df["abr"],
         pro_rlm_results.predict(X_pro),
@@ -342,7 +349,7 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
     # Robust regression for On-Demand
     X_od = sm.add_constant(on_demand_df["abr"])
     rlm_od = sm.RLM(on_demand_df["costs"], X_od, M=sm.robust.norms.HuberT())
-    od_rlm_results: RLMResults = rlm_od.fit()  # type: ignore
+    od_rlm_results = rlm_od.fit()  # type: ignore
     cost_ax.plot(
         on_demand_df["abr"],
         od_rlm_results.predict(X_od),
@@ -353,7 +360,7 @@ def plot_costs_vs_abr(data: DataExtract) -> Figure:
     # Robust regression for Prophylaxis
     X_pro = sm.add_constant(prophylaxis_df["abr"])
     rlm_pro = sm.RLM(prophylaxis_df["costs"], X_pro, M=sm.robust.norms.HuberT())
-    pro_rlm_results: RLMResults = rlm_pro.fit()  # type: ignore
+    pro_rlm_results = rlm_pro.fit()  # type: ignore
     cost_ax.plot(
         prophylaxis_df["abr"],
         pro_rlm_results.predict(X_pro),
@@ -491,7 +498,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
 
     s_dmd = scatter(dominated, "Dominated", "v", cmap="Grays")
     s_dom = scatter(dominant, "Dominant (Cost-Saving, More Effective)", "^")
-    s_ce = scatter(cost_eff, "Cost-Effective", "o", cmap="viridis")
+    s_ce = scatter(cost_eff, "Cost-Effective", "o", cmap="viridis")  # noqa: F841
     s_nce = scatter(not_cost_eff, "Not Cost-Effective", "x", cmap="plasma")
 
     # Colorbars

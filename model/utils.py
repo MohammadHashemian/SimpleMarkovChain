@@ -3,6 +3,7 @@ from statsmodels.regression.linear_model import OLSResults
 from statsmodels.robust.robust_linear_model import RLMResults
 from scipy.stats import poisson
 from sklearn.preprocessing import normalize
+from numba import jit, vectorize, float64, njit
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,53 +13,15 @@ import math
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def prob_at_least_one(lam: float) -> float:
-    """
-    Calculate the probability of at least one event occurring in a given interval.
-
-    Args:
-        lam: Mean number of events occurring within the given interval
-
-    Returns:
-        Probability of at least one event.
-    """
-    # Converse probability
-    # P(at least one) = 1 - p(failure)**n
-    # n: number of trials
-    return 1 - np.exp(-lam)
+@njit(cache=True)
+def factorial_numba(n: int):
+    result = 1
+    for i in range(2, n + 1):
+        result *= i
+    return result
 
 
-def poisson_mass_function(lam: float, k: int, loc=0):
-    """
-    Poisson mass function(given k): exp(-λ) * ((λ)**k)/ k!
-    Args:
-        lam: λ
-        k: number of expected events
-        loc: to shift distribution, 0 to standardized form by default
-    """
-    return poisson.pmf(k=k, mu=lam, loc=loc)
-
-
-def zero_truncated_mass_function(
-    lam: int | float | np.number | np.int64, k: int | float | np.number
-) -> float:
-    """
-    Zero-Truncated Poisson PMF: (λ**k) / ((e**λ) -1) * k!
-    Args:
-        k: value(s) to evaluate the PMF at (must be integer >= 1).
-        lam: rate parameter of the underlying poisson distribution.
-    """
-    # The classic ZTP formula
-    if not isinstance(k, int | float | np.number):
-        raise TypeError(f"Invalid input, expected number value, got {type(k)}")
-    if k == 0:
-        raise ValueError("zero is truncated")
-    numerator = np.power(lam, k)
-    denominator = (math.exp(lam) - 1) * math.factorial(int(k))
-    res = numerator / denominator
-    return res
-
-
+@jit(cache=True)
 def cal_body_weight(week: int, b: int = 0) -> float:
     """
     Estimates male body weight in kg using Gompertz growth model (0-50 years)
@@ -99,34 +62,59 @@ def cal_body_weight(week: int, b: int = 0) -> float:
     return round(weight, 2)
 
 
-def plot_body_weight():
-    # Generate denser points
-    weeks = np.arange(0, 3640, 10)  # Every 10 weeks
-    weights = [cal_body_weight(int(w), b=2 * 52) for w in weeks]
+@vectorize([float64(float64)], target="cpu")
+def prob_at_least_one(lam: float) -> float:
+    """
+    Calculate the probability of at least one event occurring in a given interval.
 
-    # Create the plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(weeks, weights, "b-", label="Male Body Weight")
+    Args:
+        lam: Mean number of events occurring within the given interval
 
-    plt.xlim(0, 3796)
-    plt.xlabel("Age (weeks)")
-    plt.ylabel("Weight (kg)")
-    plt.title("Male Body Weight Growth (Birth to 73 Years)")
-    plt.grid(True, which="both", ls="--")
-    plt.legend()
+    Returns:
+        Probability of at least one event.
+    """
+    # Converse probability
+    # P(at least one) = 1 - p(failure)**n
+    # n: number of trials
+    return 1 - np.exp(-lam)
 
-    # Add key age markers
-    key_ages = [0, 52, 520, 936, 2600, 3796]
-    key_labels = ["", "1 yr", "10 yrs", "18 yrs", "50 yrs", "73 yrs"]
-    plt.xticks(key_ages, key_labels)
 
-    # Add annotations
-    for w, label in zip(key_ages, key_labels):
-        weight = cal_body_weight(w)
-        plt.text(w, weight, f"{weight} kg", fontsize=10, ha="center", va="bottom")
+@njit(cache=True)
+def zero_truncated_mass_function_numba(lam: float, k: int):
+    if k == 0:
+        raise ValueError("Zero is truncated")
+    return np.power(lam, k) / ((np.exp(lam) - 1) * factorial_numba(k))
 
-    plt.tight_layout()
-    plt.savefig(PROJECT_ROOT / "outputs" / "figures" / "body_weight.png")
+
+def poisson_mass_function(lam: float, k: int, loc: int = 0):
+    """
+    Poisson mass function(given k): exp(-λ) * ((λ)**k)/ k!
+    Args:
+        lam: λ
+        k: number of expected events
+        loc: to shift distribution, 0 to standardized form by default
+    """
+    return poisson.pmf(k=k, mu=lam, loc=loc)
+
+
+def zero_truncated_mass_function(
+    lam: int | float | np.number | np.int64, k: int | float | np.number
+) -> float:
+    """
+    Zero-Truncated Poisson PMF: (λ**k) / ((e**λ) -1) * k!
+    Args:
+        k: value(s) to evaluate the PMF at (must be integer >= 1).
+        lam: rate parameter of the underlying poisson distribution.
+    """
+    # The classic ZTP formula
+    if not isinstance(k, int | float | np.number):
+        raise TypeError(f"Invalid input, expected number value, got {type(k)}")
+    if k == 0:
+        raise ValueError("zero is truncated")
+    numerator = np.power(lam, k)
+    denominator = (math.exp(lam) - 1) * math.factorial(int(k))
+    res = numerator / denominator
+    return res
 
 
 def remove_outliers(
@@ -205,6 +193,36 @@ def remove_outliers_robust(
     print(f"Removing {len(df) - len(filtered_df)} outliers")
 
     return filtered_df
+
+
+def plot_body_weight():
+    # Generate denser points
+    weeks = np.arange(0, 3640, 10)  # Every 10 weeks
+    weights = [cal_body_weight(int(w), b=2 * 52) for w in weeks]
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(weeks, weights, "b-", label="Male Body Weight")
+
+    plt.xlim(0, 3796)
+    plt.xlabel("Age (weeks)")
+    plt.ylabel("Weight (kg)")
+    plt.title("Male Body Weight Growth (Birth to 73 Years)")
+    plt.grid(True, which="both", ls="--")
+    plt.legend()
+
+    # Add key age markers
+    key_ages = [0, 52, 520, 936, 2600, 3796]
+    key_labels = ["", "1 yr", "10 yrs", "18 yrs", "50 yrs", "73 yrs"]
+    plt.xticks(key_ages, key_labels)
+
+    # Add annotations
+    for w, label in zip(key_ages, key_labels):
+        weight = cal_body_weight(w)
+        plt.text(w, weight, f"{weight} kg", fontsize=10, ha="center", va="bottom")
+
+    plt.tight_layout()
+    plt.savefig(PROJECT_ROOT / "outputs" / "figures" / "body_weight.png")
 
 
 # DEPRECATED

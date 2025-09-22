@@ -24,9 +24,9 @@ PETTERSSON_CATEGORIES = {
         if i == 0
         else (
             "Mild_Arthropathy"
-            if i < 5
+            if i <= 5
             else "Moderate_Arthropathy"
-            if i < 28
+            if i <= 28
             else "Severe_Arthropathy"
         )
     )
@@ -70,7 +70,6 @@ LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 70 years in weeks (2, 72)
 SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 10 years in weeks (2, 12)
 SHORT_SIMULATION_START_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients
 MORTALITY_RATE = 4.9 / 1000  # Annually over 1000 population 4.9 person dies
-# TODO: To be considered (?)
 LONG_SIMULATION_START_AGE_IN_WEEK = (
     SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS
 )  # -> Age 12

@@ -7,7 +7,7 @@ from model.types import (
     HemophiliaRewardArgs,
     Treatment,
 )
-from model.utils import zero_truncated_mass_function
+from model.utils import zero_truncated_mass_function_numba
 from model.visualization import visualize_abr
 import model.utils as model_util
 from SALib.sample import saltelli
@@ -337,7 +337,7 @@ def count_bleeds(
             raise ValueError(f"Invalid λ for state {state}: {lam}, type:{type(lam)}")
         k_array = np.arange(start=1, stop=k_range, step=1).astype(int)
         weights = np.array(
-            [zero_truncated_mass_function(lam=lam, k=k) for k in k_array]
+            [zero_truncated_mass_function_numba(lam=lam, k=k) for k in k_array]
         )
         sum_of_weights = weights.sum()
         if sum_of_weights <= 0:

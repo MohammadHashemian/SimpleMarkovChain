@@ -81,6 +81,7 @@
         "ndarray",
         "newaxis",
         "njit",
+        "nopython",
         "nrows",
         "numpy",
         "pairplot",
