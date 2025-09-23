@@ -1,13 +1,43 @@
+[build-system]
+requires = ['setuptools', 'setuptools-scm']
+
 [project]
-name = "Hemophilia_Cost_Utility"
-version = "0.7"
-description = "Discrete markov chain simulation for analyzing cost effectiveness of hemophilia A interventions"
+name = "markov_chains"
+version = "0.8"
+description = "Discrete markov chain toolkit for conduct cost effectiveness analysis"
 license = { text = "MIT" }
 authors = [
   { name = "Mohammad Hashemian", email = "muhammadhashemian@gmail.com" },
 ]
-
 readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "beautifulsoup4",
+  "dotenv",
+  "enlighten",
+  "jupyter",
+  "hmmlearn",
+  "matplotlib",
+  "numba",
+  "numpy",
+  "pandas",
+  "openpyxl",
+  "plotly",
+  "pydantic",
+  "seaborn",
+  "pymc",
+  "pytest",
+  "python-dotenv",
+  "SALib",
+  "scikit-learn",
+  "scipy",
+  "sdv",
+  "statsmodels",
+  "sympy",
+  "tqdm",
+  "typer",
+  "xarray",
+]
 
 [tool.pytest.ini_options]
 log_cli = true
