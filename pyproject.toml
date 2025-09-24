@@ -1,5 +1,6 @@
 [build-system]
 requires = ['setuptools', 'setuptools-scm']
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "markov_chains"
@@ -46,12 +47,15 @@ pythonpath = ["."]
 log_cli_format = "%(filename)s:%(lineno)s:[%(levelname)s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
-# [tool.mypy]
+[tool.mypy]
+python_version = "3.13"
+python_executable = "./.venv/bin/python"
+strict = true
+local_partial_types = true
+ignore_missing_imports = true
+warn_unreachable = true
+disable_error_code = ["no-untyped-def"]
 # plugins = ["returns.contrib.mypy.returns_plugin"]
-# ignore_missing_imports = true
-# strict = true
-# local_partial_types = true
-# warn_unreachable = true
 
 # enable_error_code = [
 #   "truthy-bool",
@@ -63,10 +67,6 @@ log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 #   "unimported-reveal",
 #   "deprecated",
 #   "exhaustive-match",
-# ]
-
-# disable_error_code = [
-#   "no-untyped-def", 
 # ]
 
 # [[tool.mypy.overrides]]

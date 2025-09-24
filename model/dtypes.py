@@ -1,8 +1,6 @@
 from typing import TypedDict
 from enum import StrEnum
 from model.markov_chain import MarkovResult
-
-
 import numpy as np
 
 

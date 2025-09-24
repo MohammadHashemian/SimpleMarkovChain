@@ -1,6 +1,3 @@
-from pathlib import Path
-from statsmodels.regression.linear_model import OLSResults
-from statsmodels.robust.robust_linear_model import RLMResults
 from scipy.stats import poisson
 from sklearn.preprocessing import normalize
 from numba import jit, vectorize, float64, njit
@@ -10,7 +7,12 @@ import numpy as np
 import pandas as pd
 import math
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+def get_project_root():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    return root
 
 
 @njit(cache=True)
@@ -124,7 +126,7 @@ def remove_outliers(
     Helper function to remove outliers, supports pandas dataframe
     """
     X_constant = sm.add_constant(df[exog_col])
-    ols: OLSResults = sm.OLS(endog=df[endog_col], exog=X_constant).fit()  # type: ignore
+    ols = sm.OLS(endog=df[endog_col], exog=X_constant).fit()
     cooks_d = ols.get_influence().cooks_distance[0]
     threshold = threshold_factor / len(df)
     mask = cooks_d <= threshold
@@ -161,9 +163,7 @@ def remove_outliers_robust(
     X_constant = sm.add_constant(df[exog_col])
 
     # Fit robust linear model using RLM with M-estimator (HuberT is default)
-    rlm: RLMResults = sm.RLM(
-        endog=df[endog_col], exog=X_constant, M=sm.robust.norms.HuberT()
-    ).fit()  # type: ignore
+    rlm = sm.RLM(endog=df[endog_col], exog=X_constant, M=sm.robust.norms.HuberT()).fit()
 
     # Calculate approximate Cook's distance for robust regression
     # Get standardized residuals
@@ -222,7 +222,7 @@ def plot_body_weight():
         plt.text(w, weight, f"{weight} kg", fontsize=10, ha="center", va="bottom")
 
     plt.tight_layout()
-    plt.savefig(PROJECT_ROOT / "outputs" / "figures" / "body_weight.png")
+    plt.savefig(get_project_root() / "outputs" / "figures" / "body_weight.png")
 
 
 # DEPRECATED

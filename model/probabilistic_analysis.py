@@ -1,7 +1,7 @@
 from typing import Literal, List, Unpack
 from model import constants
 from model.markov_chain import MarkovChains, Chain, TransitionGenerator
-from model.types import (
+from model.dtypes import (
     HemophiliaInput,
     HemophiliaOutput,
     HemophiliaRewardArgs,

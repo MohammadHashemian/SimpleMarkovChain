@@ -1,5 +1,5 @@
 from ..data.loaders import load_population_pyramids, PROJECT_ROOT
-from ..utils.logger import suppress_matplotlib_debug
+from ..utils.logger import suppress_matplotlib_font_manager_logger
 from ..processing.distribution_adjuster import adjust_population_pyramid
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ def plot_pyramids(output_path: Path = PROJECT_ROOT / "outputs" / "figures"):
     # Loading population pyramids data
     dfs = load_population_pyramids()
 
-    suppress_matplotlib_debug()
+    suppress_matplotlib_font_manager_logger()
     for year, df in dfs.items():
         max_age = df["Age"].max()
         df = adjust_population_pyramid(df, "M", "Hemophilia", 17.1 / 100000)
@@ -42,7 +42,7 @@ def plot_pyramids_animation(
         output_path.mkdir(parents=True)
 
     dfs = load_population_pyramids()
-    suppress_matplotlib_debug()
+    suppress_matplotlib_font_manager_logger()
 
     years = sorted(dfs.keys())
 
