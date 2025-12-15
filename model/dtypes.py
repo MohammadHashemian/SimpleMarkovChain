@@ -1,7 +1,10 @@
-from typing import TypedDict
+from typing import TypedDict, Optional, Union
 from enum import StrEnum
 from model.markov_chain import MarkovResult
+from dataclasses import dataclass
 import numpy as np
+
+# dtype -> Defined Types
 
 
 class Treatment(StrEnum):
@@ -11,11 +14,11 @@ class Treatment(StrEnum):
 
 class HemophiliaInput(TypedDict):
     treatment: Treatment
-    abr: np.float64 | float
-    ajbr: np.float64 | float | None
-    wbr: np.float64 | float | None
-    wjbr: np.float64 | float | None
-    webr: np.float64 | float | None
+    abr: Union[np.float64, float]
+    ajbr: Optional[Union[np.float64, float]]
+    wbr: Optional[Union[np.float64, float]]
+    wjbr: Optional[Union[np.float64, float]]
+    webr: Optional[Union[np.float64, float]]
 
 
 class HemophiliaRewardArgs(HemophiliaInput):
@@ -47,3 +50,24 @@ class HemophiliaOutput(MarkovResult):
     qaly: float
     abr: float
     pettersson_score: list[int | float]
+
+
+# TODO:
+# Should i use dataclasses instead of typed dictionary? to get ride of Key Errors
+
+
+@dataclass
+class HemophiliaInputs:
+    treatment: Treatment
+    abr: np.float64 | float
+    ajbr: Optional[Union[np.float64, float]] = None
+    wbr: Optional[Union[np.float64, float]] = None
+    wjbr: Optional[Union[np.float64, float]] = None
+    webr: Optional[Union[np.float64, float]] = None
+
+
+@dataclass
+class HemophiliaOutputs:
+    number_of_bleeds: int = 0
+    number_of_hemarthrosis: int = 0
+    pettersson_score = 0
