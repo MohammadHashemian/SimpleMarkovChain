@@ -7,6 +7,12 @@ import numpy as np
 # dtype -> Defined Types
 
 
+class Currencies(StrEnum):
+    IRR = "irr"
+    TOMAN = "toman"
+    USD = "usd"
+
+
 class Treatment(StrEnum):
     ON_DEMAND = "on_demand"
     PROPHYLAXIS = "prophylaxis"

@@ -1,3 +1,5 @@
+from model.defined_types import Currencies
+
 # SOLID VALUES
 START_STATE = "Healthy"
 STATES = [
@@ -12,7 +14,8 @@ STATE_UTILITIES = {
     "Mild_Arthropathy": 0.85,
     "Moderate_Arthropathy": 0.80,
     "Severe_Arthropathy": 0.75,
-    "Arthropathy": 0.75,  # Placeholder
+    # New model structure uses dynamic disease progression using pettersson categories
+    "Arthropathy": 0.75,  # Placeholder, DEPRECATED
     "Bleeding": 0.60,
     "Hemarthrosis": 0.50,
     "LT_Bleeding": 0.25,
@@ -31,29 +34,39 @@ PETTERSSON_CATEGORIES = {
     for i in range(80)
 }
 
+MODEL_CURRENCY = Currencies.IRR
 # Dollar
 GDP_PER_CAPITA = 4_771.4  # USD
 WTP_THRESHOLD = GDP_PER_CAPITA * 3  # USD
+REPORT_PPP = False  # Reporting PPP works with USD currency
+PPP_CONVERSION_FACTOR = 117_170  # World Bank 2024 IRR/USD, PPP
+# PPP_CONVERSION_FACTOR = 165_354  # Y_CHART | IMF 2025 IRR/USD, PPP
 
-# Toman (IRR)
-GDP_PER_CAPITA_IRR = 180_000_000
-GDP_PER_CAPITA_TOMAN = GDP_PER_CAPITA_IRR / 10
-WTP_THRESHOLD_ORPHAN_TOMAN = GDP_PER_CAPITA_TOMAN * 10  # 180 MIllion toman
+if MODEL_CURRENCY.value.upper() == "IRR":
+    # Toman (IRR)
+    GDP_PER_CAPITA = 180_000_000
+    # For orphan disease
+    WTP_THRESHOLD = GDP_PER_CAPITA * 10  # 180 MIllion toman
+
+elif MODEL_CURRENCY.value.upper() == "TOMAN":
+    GDP_PER_CAPITA = 180_000_000 / 10
+    # For orphan disease
+    WTP_THRESHOLD = GDP_PER_CAPITA * 10  # 180 MIllion toman
 
 # Yearly weeks count
 WOY = 52
 # 10 years in weeks (2, 12) children/pediatrics (Common grouping)
 SHORT_TERM_CYCLE_COUNTS = 10 * WOY  # 520
 SHORT_SIMULATION_START_AGE_IN_WEEK = 2 * WOY  # 2 Years old patients (Common grouping)
-# 70 years in weeks (2, 72) children/pediatrics/adolescents/adults (Common grouping)
-LONG_TERM_CYCLE_COUNTS = 70 * WOY  # 3640
-# 60 years in weeks (12, 72) adolescents/adults (Common grouping)
-ADULT_TERM_CYCLE_COUNTS = 60 * WOY  # 3120
+# Lifetime horizon in weeks (2, 100) children/pediatrics/adolescents/adults (Common grouping)
+LIFETIME_CYCLE_COUNTS = 98 * WOY  # 5096
+# 60 years in weeks (12, 100) adolescents/adults (Common grouping)
+ADULT_TERM_CYCLE_COUNTS = 88 * WOY  # 4576
 ADULT_SIMULATION_START_AGE_IN_WEEK = 12 * WOY  # 12 Years old patients (Common grouping)
 LONG_SIMULATION_START_AGE_IN_WEEK = (
     SHORT_SIMULATION_START_AGE_IN_WEEK + SHORT_TERM_CYCLE_COUNTS
 )  # -> (2 + 10) * 52 = 624
-MORTALITY_RATE = 4.9 / 1000  # Annually over 1000 population 4.9 person dies
+MORTALITY_RATE = 7.76 / 1000  # Annually over 1000 population 7.76 person dies 2024 records
 
 # [------- CONSIDERABLE -------]
 ON_DEMAND_ABR_REPORTS = [
@@ -93,7 +106,7 @@ ON_DEMAND_ABR_REPORTS = [
     [35.8, 24.8],
     [21.42, 9.59],  # Aznar, n: 15, 26-47 mean 35.6, 10.1111/vox.12066
     [35.7, 22.2],  # von Drygalski, 26 adults (mean 42.8 y); 10.1056/NEJMoa2209226
-    [22.2, 7.0], # Liu, ODT group (n=18) age 12.4 SD 4.1, 10.1111/hae.14016
+    [22.2, 7.0],  # Liu, ODT group (n=18) age 12.4 SD 4.1, 10.1111/hae.14016
 ]
 PROPHYLAXIS_ABR_REPORTS = [
     [2.5, 4.6],  # Zhao et al. (median 12 y 1-50 y) 10.1177/1076029621989811
@@ -155,11 +168,6 @@ LT_BLEEDING_DOSE = 550
 # TODO:
 WILLINGNESS_TO_PAY_THRESHOLD_IRR = None
 LATE_ARTHROPATHY = None
-
-REPORT_PPP = False
-REPORT_UNIT = "USD"
-PPP_CONVERSION_FACTOR = 117_170  # World Bank 2024 IRR/USD, PPP
-# PPP_CONVERSION_FACTOR = 165_354  # Y_CHART | IMF 2025 IRR/USD, PPP
 
 # Rate indicates frequency of Hemarthrosis causes permanent joint damage (lambda)
 # Tuned to fit Manco-Johnson M et al. article on NEW ENGLAND journal:

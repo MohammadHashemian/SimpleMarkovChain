@@ -1,7 +1,8 @@
-from typing import Literal, List, Unpack
+from typing import List, Unpack
 from model import constants
+from model.defined_types import Currencies
 from model.markov_chain import MarkovChains, Chain, TransitionGenerator
-from model.dtypes import (
+from model.defined_types import (
     HemophiliaInput,
     HemophiliaOutput,
     HemophiliaRewardArgs,
@@ -23,8 +24,9 @@ def sample_population_abrs(
     Samples ABR values to figure the real world patient abrs distribution
 
     Args:
-        treatment: either "on_demand" or "prophylaxis"
-        n_samples: base sample size for sobol sampler
+        - treatment: either "on_demand" or "prophylaxis"
+        expands new treatment by adding it to study_data array and defining new dtype.Treatment
+        - n_samples: base sample size for sobol sampler
 
     Returns:
         list[float]: array of sampled annual bleeding rates
@@ -38,6 +40,7 @@ def sample_population_abrs(
         else constants.PROPHYLAXIS_ABR_REPORTS
     )
     num_studies = len(study_data)
+    # Dynamic lengthening
     problem = {
         "num_vars": num_studies,
         "names": [f"study_{i}_weight" for i in range(num_studies)],
@@ -177,18 +180,20 @@ def worker_function(
     def _to_cost(
         dose: float | int,
         n: int,
-        unit: Literal["IRR", "USD"] = constants.REPORT_UNIT,
+        unit: Currencies = constants.MODEL_CURRENCY,
         ppp: bool = constants.REPORT_PPP,
     ):
         if isinstance(dose, int):
             dose = float(dose)
-
-        if unit not in ["USD", "IRR"]:
-            raise ValueError(f"Report unit meant to be USD or IRR, got {unit}")
+            
+        if unit not in Currencies:
+            raise ValueError("Can not calculate correct costs. wrong currency supplied.")
 
         cost = dose * constants.PRICE_PER_UI_FACTOR_VIII
-        if unit == "IRR":
+        if unit.upper() == "IRR":
             cost = cost
+        elif unit.upper() == "TOMAN":
+            cost = cost / 10
         elif unit == "USD" and not ppp:
             cost = cost / constants.RIAL_USD_PRICE
         elif unit == "USD" and ppp:

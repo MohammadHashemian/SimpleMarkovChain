@@ -64,7 +64,7 @@ def extract(
     prophylaxis_annual_use = prophylaxis_results["annual_factor_consumption"]
     prophylaxis_utilities = prophylaxis_results["QALYS"]
     # Array of weekly patients weight
-    body_weights = [cal_body_weight(i) for i in range(constants.LONG_TERM_CYCLE_COUNTS)]
+    body_weights = [cal_body_weight(i) for i in range(constants.LIFETIME_CYCLE_COUNTS)]
 
     # Create DataFrames
     on_demand_df = pd.DataFrame(
