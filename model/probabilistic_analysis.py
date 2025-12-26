@@ -262,7 +262,7 @@ def factor_consumption(
         )
 
     # Starting treatment from age 2 yo
-    ssp = constants.SHORT_SIMULATION_START_AGE_IN_WEEK
+    ssp = constants.PEDIATRIC_STARTING_POINT
     weight = model_util.cal_body_weight(step, b=ssp)
     injected_dose = 0
 
