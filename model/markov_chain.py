@@ -177,6 +177,166 @@ class MarkovChains:
         return list(self.walk())
 
 
+class HemophiliaMarkovChains(MarkovChains):
+    """
+    Extension for hemophilia models with weekly cycles and age-specific mortality.
+    Only modifies transition probabilities at runtime
+    """
+
+    def __init__(
+        self,
+        chains,
+        entrance,
+        entrance_chain,
+        steps,
+        conditions=None,
+        worker_kwargs=None,
+        mortality_func: Optional[
+            Callable[[int], float]
+        ] = None,  # age -> annual rate per 1000
+        original_rate_per_1000: float = 7.76,
+        start_age: int = 1,
+        dead_state: str = "dead",
+    ):
+        super().__init__(
+            chains=chains,
+            entrance=entrance,
+            entrance_chain=entrance_chain,
+            steps=steps,
+            conditions=conditions,
+            worker_kwargs=worker_kwargs,
+        )
+
+        self.mortality_func = mortality_func
+        self.start_age = start_age
+        self.dead_state = dead_state
+
+        # Pre-compute original weekly mortality (embedded in base matrix)
+        annual_prob_orig = original_rate_per_1000 / 1000
+        if annual_prob_orig >= 1:
+            self.original_weekly_mort = 1.0
+        else:
+            annual_hazard_orig = -np.log(1 - annual_prob_orig)
+            self.original_weekly_mort = 1 - np.exp(-annual_hazard_orig / 52)
+
+    def _adjust_transition_for_mortality(self, probs, current_state, step):
+        """Add age-specific background weekly mortality for non-LTB alive states."""
+        if not self.mortality_func:
+            return probs
+
+        # Only apply to alive states excluding LT_Bleeding (bleed-specific death already modeled)
+        if current_state in ["Healthy", "Bleeding", "Hemarthrosis"]:
+            weeks_elapsed = step
+            current_age = self.start_age + weeks_elapsed / 52
+            age_int = int(np.floor(current_age))
+
+            annual_rate_per_1000 = self.mortality_func(age_int)
+            annual_prob = annual_rate_per_1000 / 1000
+            if annual_prob <= 0:
+                return probs
+            annual_hazard = -np.log(1 - min(annual_prob, 0.999999))
+            weekly_background_mort = 1 - np.exp(-annual_hazard / 52)
+
+            current_chain = self._get_current_chain()
+            states_list = current_chain.states
+
+            try:
+                dead_idx = states_list.index(self.dead_state)
+            except ValueError:
+                return probs  # No dead state
+
+            # Add to death probability, scale other probs down to keep sum=1
+            new_probs = probs.copy()
+            additional_death = weekly_background_mort
+            new_probs[dead_idx] += additional_death
+
+            # Scale non-death probs (competing risk adjustment)
+            non_death_sum = (
+                sum(new_probs) - new_probs[dead_idx]
+            )  # Should be ~1 - original_small_mort
+            if non_death_sum > 0:
+                scaling = (1.0 - new_probs[dead_idx]) / non_death_sum
+                for i in range(len(new_probs)):
+                    if i != dead_idx:
+                        new_probs[i] *= scaling
+
+            # Final normalization for safety
+            total = sum(new_probs)
+            if not np.isclose(total, 1.0, rtol=1e-8):
+                new_probs = [p / total for p in new_probs]
+
+            return new_probs
+
+        # For LT_Bleeding or Death: no adjustment
+        return probs
+
+    def walk(self, steps=None):
+        """Override only the transition sampling part — everything else unchanged."""
+        steps = steps if steps is not None else self.steps
+        current_state_idx = self.current_state_idx
+        current_chain = self._get_current_chain()
+        states = current_chain.states
+        transitions = current_chain.matrix
+
+        for step in range(steps + 1):
+            current_state = states[current_state_idx]
+            yield current_state
+
+            if current_state == self.dead_state:
+                return  # Stop generator entirely — no more yields
+
+            # === Reward and store processing (identical to parent) ===
+            reward_kwargs = {}
+            for arg, func in self.store.items():
+                res = func(
+                    state=states[current_state_idx],
+                    chain=self.current_chain_name,
+                    **self.worker_kwargs,
+                    **reward_kwargs,
+                )
+                reward_kwargs[arg] = res
+                self.rewards[arg].append(res)
+
+            for func in self.reward_functions:
+                reward = func(
+                    step=step,
+                    state=states[current_state_idx],
+                    chain=self.current_chain_name,
+                    **reward_kwargs,
+                    **self.worker_kwargs,
+                )
+                self.rewards[func.__name__].append(reward)
+
+            if step < steps:
+                for chain_name, condition in self.conditions.items():
+                    if chain_name != self.current_chain_name and condition(
+                        step,
+                        states[current_state_idx],
+                        self.current_chain_name,
+                        **self.worker_kwargs,
+                    ):
+                        self.current_chain_name = chain_name
+                        current_chain = self._get_current_chain()
+                        states = current_chain.states
+                        transitions = current_chain.matrix
+                        try:
+                            current_state_idx = states.index(states[current_state_idx])
+                        except ValueError:
+                            current_state_idx = 0
+                        break
+
+                # === Transition with mortality adjustment ===
+                base_probs = transitions[current_state_idx]
+                adjusted_probs = self._adjust_transition_for_mortality(
+                    base_probs, states[current_state_idx], step
+                )
+
+                current_state_idx = np.random.choice(len(states), p=adjusted_probs)
+
+        # Update final internal state
+        self.current_state_idx = current_state_idx
+
+
 class MarkovResult(BaseModel):
     """
     Common returned results from markov models simulations

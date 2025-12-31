@@ -110,7 +110,7 @@ def worker_function(
         "aebr": (
             abr - ((abr * constants.AJBR_FRACTION) + (abr * constants.LTB_FRACTION))
         ),
-        "amr": constants.MORTALITY_RATE,
+        "amr": constants.CRUDE_MORTALITY_RATE,
     }
 
     # Direct probability assignment for no_bleeding event
@@ -126,7 +126,10 @@ def worker_function(
         # Bleeding Transitions (competing risks)
         ("Bleeding", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
         ("Bleeding", "Hemarthrosis"): (_to_weekly(annual_rates["ajbr"]), "weekly"),
-        ("Bleeding", "LT_Bleeding"): (_to_weekly(annual_rates["altb"]), "weekly"),
+        ("Bleeding", "LT_Bleeding"): (
+            _to_weekly(annual_rates["altb"]) + _to_weekly(annual_rates["amr"]),
+            "weekly",
+        ),
         ("Bleeding", "Death"): (_to_weekly(annual_rates["amr"]), "weekly"),
         # Hemarthrosis Transitions (competing risks)
         ("Hemarthrosis", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
@@ -185,9 +188,11 @@ def worker_function(
     ):
         if isinstance(dose, int):
             dose = float(dose)
-            
+
         if unit not in Currencies:
-            raise ValueError("Can not calculate correct costs. wrong currency supplied.")
+            raise ValueError(
+                "Can not calculate correct costs. wrong currency supplied."
+            )
 
         cost = dose * constants.PRICE_PER_UI_FACTOR_VIII
         if unit.upper() == "IRR":

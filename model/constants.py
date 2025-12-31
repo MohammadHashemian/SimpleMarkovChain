@@ -34,7 +34,69 @@ PETTERSSON_CATEGORIES = {
     for i in range(80)
 }
 # Annually over 1000 population 7.76 person dies 2024 records
-MORTALITY_RATE = 7.76 / 1000
+CRUDE_MORTALITY_RATE = 7.76 / 1000
+
+# Dynamically get mortality rate based on age
+def get_mortality_rate(age: int, use_age_specific: bool = True) -> float:
+    """
+    Return annual mortality probability for a given age.
+    
+    Reference: https://ourworldindata.org/grapher/annual-death-rate-by-age-group?country=~POL
+
+    Parameters:
+    - age: Current age in years (integer)
+    - use_age_specific: If True, use realistic age-specific rates; if False, use constant crude rate
+
+    Returns:
+    - Annual mortality rate (float)
+    """
+    if not use_age_specific:
+        return CRUDE_MORTALITY_RATE
+
+    # (From Poland world data life tables)
+    if age == 0:
+        return 3.69 / 1000  # Infant mortality ~5-6 per 1,000
+    elif 1 <= age <= 4:
+        return 0.15 / 1000
+    elif 5 <= age <= 9:
+        return 0.09 / 1000
+    elif 10 <= age <= 14:
+        return 0.12 / 1000
+    elif 15 <= age <= 19:
+        return 0.36 / 1000
+    elif 20 <= age <= 24:
+        return 0.56 / 1000
+    elif 25 <= age <= 29:
+        return 0.7 / 1000
+    elif 30 <= age <= 34:
+        return 0.93 / 1000
+    elif 35 <= age <= 39:
+        return 1.39 / 1000
+    elif 40 <= age <= 44:
+        return 1.94 / 1000
+    elif 45 <= age <= 49:
+        return 2.99 / 1000
+    elif 50 <= age <= 54:
+        return 4.79 / 1000
+    elif 55 <= age <= 59:
+        return 7.57 / 1000
+    elif 60 <= age <= 64:
+        return 12.11 / 1000
+    elif 65 <= age <= 69:
+        return 18.8 / 1000
+    elif 70 <= age <= 74:
+        return 26.86 / 1000
+    elif 75 <= age <= 79:
+        return 40.80 / 1000
+    elif 80 <= age <= 84:
+        return 65.25 / 1000
+    elif 85 <= age <= 89:
+        return 113.20 / 1000
+    elif age >= 90:
+        return 200.0 / 1000  # Capped;
+    else:
+        return CRUDE_MORTALITY_RATE  # Fallback
+
 
 # # [------- ECONOMICS -------]
 MODEL_CURRENCY = Currencies.IRR
