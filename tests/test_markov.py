@@ -1,5 +1,12 @@
 from model.utils import prob_at_least_one, poisson_mass_function
-from model.constants import WOY, AJBR_FRACTION, LTB_FRACTION
+from model.constants import (
+    WOY,
+    AJBR_FRACTION,
+    LTB_FRACTION,
+    STATES,
+    CRUDE_MORTALITY_RATE,
+    get_mortality_rate,
+)
 import numpy as np
 import pytest
 
@@ -11,15 +18,85 @@ logger = logging.getLogger("__pytest__")
 
 
 @pytest.fixture()
-def abrs():
+def get_linear_abrs():
     abr = [i for i in range(0, 160, 1)]
     return abr
 
 
+@pytest.fixture()
+def hemophilia_markov_chain():
+    from model.markov_chain import HemophiliaMarkovChains
+    from model.markov_chain import Chain
+    from model.markov_chain import TransitionGenerator
+
+    chains = []
+    chain_main = Chain(
+        name="main",
+        states=STATES,
+        matrix=np.eye(
+            N=len(STATES), M=len(STATES), dtype=np.float64
+        ),  # Identity matrix as placeholder
+    )
+    bleed_rate = 22 / WOY  # Average ABR of 22 converted to weekly rate
+    hemarthrosis_rate = bleed_rate * AJBR_FRACTION
+    ltbr = bleed_rate * LTB_FRACTION
+    ebr = bleed_rate - (hemarthrosis_rate + ltbr)
+    mortality_rate = CRUDE_MORTALITY_RATE / WOY
+    # Direct probability assignment for no_bleeding event
+    weekly_no_event_prob = np.exp(-bleed_rate)
+    transition_pairs = {
+        # Healthy Transitions (competing risks)
+        ("Healthy", "Bleeding"): (ebr, "weekly"),
+        ("Healthy", "Hemarthrosis"): (hemarthrosis_rate, "weekly"),
+        ("Healthy", "LT_Bleeding"): (ltbr, "weekly"),
+        ("Healthy", "Death"): (mortality_rate, "weekly"),
+        # Bleeding Transitions (competing risks)
+        ("Bleeding", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
+        ("Bleeding", "Hemarthrosis"): (hemarthrosis_rate, "weekly"),
+        ("Bleeding", "LT_Bleeding"): (
+            ltbr + mortality_rate,
+            "weekly",
+        ),
+        ("Bleeding", "Death"): (mortality_rate, "weekly"),
+        # Hemarthrosis Transitions (competing risks)
+        ("Hemarthrosis", "Healthy"): (weekly_no_event_prob, None),  # Direct probability
+        ("Hemarthrosis", "Bleeding"): (ebr, "weekly"),
+        ("Hemarthrosis", "LT_Bleeding"): (ltbr, "weekly"),
+        ("Hemarthrosis", "Death"): (mortality_rate, "weekly"),
+    }
+
+    # States order: ["Healthy", "Bleeding", "Hemarthrosis", "LT_Bleeding", "Death"]
+    special_transitions = {
+        "Death": [0.0] * (len(chain_main.states) - 1) + [1.0],  # Absorbing
+        "LT_Bleeding": [0.94] + [0.0] * (len(chain_main.states) - 2) + [0.06],
+    }
+    transition_matrix = TransitionGenerator(
+        states=STATES,
+        time_step="weekly",
+        transition_pairs=transition_pairs,
+        special_transitions=special_transitions,
+    ).numpy_matrix()
+    chain_main.matrix = transition_matrix
+    chains.append(chain_main)
+
+    markov_chain = HemophiliaMarkovChains(
+        chains=chains,
+        entrance="Healthy",
+        entrance_chain="main",
+        conditions=None,
+        dead_state="Death",
+        steps=520,
+        start_age=2,
+        mortality_func=get_mortality_rate,
+        enable_logger=True,
+    )
+    return markov_chain
+
+
 # Assume states: [Healthy -Transitioning into---> [Bleeding, Hemarthrosis, LT_Bleeding, Death]]
-def test_probability(abrs):
+def test_probability(get_linear_abrs):
     # annual values
-    annual_abr: float = np.random.choice(abrs)
+    annual_abr: float = np.random.choice(get_linear_abrs)
     annual_ajbr: float = annual_abr * AJBR_FRACTION
     annual_ltb: float = annual_abr * LTB_FRACTION
     annual_aebr: float = annual_abr - (annual_ajbr + annual_ltb)
@@ -99,3 +176,41 @@ def test_probability(abrs):
             Result: Survival/competing risk method gained accurate transition matrix
             for λ > 1, which is crucial in our study."""
     )
+
+
+# Model struct:
+#                                             <-----  Bleed Resolution  <-----
+#      -----------------------------------------------------------------------------------------------------------
+#      |                                                                                 |                       |
+#   [Healthy | Mild | Moderate | Severe] <Pettersson decremented utility reward> -> [LT_Bleeding] -> [Death]     |
+#      |                                                                                                         |
+#      |-----------------------------------------------> [Bleeding] ---------------------------------------------|
+#      |                                                                                                         |
+#       -----------------------------------------------> [Hemarthrosis] <Increment pettersson score> ------------
+def test_hemophilia_markov_chain_mortality_adjuster(hemophilia_markov_chain):
+    states = hemophilia_markov_chain.chains[0].states
+    matrix = hemophilia_markov_chain.chains[0].matrix
+
+    assert states is not None
+    logger.info(f"States: {states}")
+    assert (
+        len(states) == matrix.shape[0]
+    ), "Number of states should match matrix dimension"
+
+    assert matrix is not None
+    logger.info("Transition Matrix prior to runtime adjustment: \n {}".format(matrix))
+
+    steps_arr = hemophilia_markov_chain.run()
+    if "Death" not in steps_arr:
+        logger.info("Patient survived the entire simulation period.")
+        return
+
+    logger.info(f"Patient lived for: {steps_arr.index('Death')} weeks until Death.")
+    state_before_death = steps_arr[steps_arr.index("Death") - 1]
+    cause_of_death_map = {
+        "Bleeding": "due natural cause of death",
+        "Hemarthrosis": "due natural cause of death",
+        "LT_Bleeding": "due to Life threatening Bleeding complications",
+        "Healthy": "due natural cause of death",
+    }
+    logger.info(f"Cause of death: {cause_of_death_map[state_before_death]}")

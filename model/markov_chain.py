@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import enlighten
 import multiprocessing
+import logging
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -179,8 +180,10 @@ class MarkovChains:
 
 class HemophiliaMarkovChains(MarkovChains):
     """
-    Extension for hemophilia models with weekly cycles and age-specific mortality.
-    Only modifies transition probabilities at runtime
+    Extension for hemophilia markov model with weekly cycles and age-specific mortality runtime adjustment.
+
+    Key changes:
+        - Only modifies transition probabilities at runtime.
     """
 
     def __init__(
@@ -197,6 +200,7 @@ class HemophiliaMarkovChains(MarkovChains):
         original_rate_per_1000: float = 7.76,
         start_age: int = 1,
         dead_state: str = "dead",
+        enable_logger: bool = False,
     ):
         super().__init__(
             chains=chains,
@@ -210,6 +214,7 @@ class HemophiliaMarkovChains(MarkovChains):
         self.mortality_func = mortality_func
         self.start_age = start_age
         self.dead_state = dead_state
+        self.enable_logger = enable_logger
 
         # Pre-compute original weekly mortality (embedded in base matrix)
         annual_prob_orig = original_rate_per_1000 / 1000
@@ -222,19 +227,22 @@ class HemophiliaMarkovChains(MarkovChains):
     def _adjust_transition_for_mortality(self, probs, current_state, step):
         """Add age-specific background weekly mortality for non-LTB alive states."""
         if not self.mortality_func:
+            if self.enable_logger:
+                logging.getLogger().warning("No mortality function provided.")
             return probs
 
         # Only apply to alive states excluding LT_Bleeding (bleed-specific death already modeled)
         if current_state in ["Healthy", "Bleeding", "Hemarthrosis"]:
             weeks_elapsed = step
-            current_age = self.start_age + weeks_elapsed / 52
-            age_int = int(np.floor(current_age))
+            if weeks_elapsed % 52 != 0:
+                return probs  # Adjust only on yearly basis
 
-            annual_rate_per_1000 = self.mortality_func(age_int)
-            annual_prob = annual_rate_per_1000 / 1000
-            if annual_prob <= 0:
+            current_age = int(self.start_age + weeks_elapsed / 52)
+
+            annual_rate_per_1000 = self.mortality_func(current_age)
+            if annual_rate_per_1000 <= 0:
                 return probs
-            annual_hazard = -np.log(1 - min(annual_prob, 0.999999))
+            annual_hazard = -np.log(1 - min(annual_rate_per_1000, 0.999999))
             weekly_background_mort = 1 - np.exp(-annual_hazard / 52)
 
             current_chain = self._get_current_chain()
@@ -265,9 +273,23 @@ class HemophiliaMarkovChains(MarkovChains):
             if not np.isclose(total, 1.0, rtol=1e-8):
                 new_probs = [p / total for p in new_probs]
 
+            if self.enable_logger:
+                if probs[dead_idx] != new_probs[dead_idx]:
+                    logging.getLogger().info(
+                        "Adjusted mortality for state: %s at age %.2f (step %d): %.8f -> %.8f",
+                        current_state,
+                        current_age,
+                        step,
+                        probs[dead_idx],
+                        new_probs[dead_idx],
+                    )
             return new_probs
 
         # For LT_Bleeding or Death: no adjustment
+        if self.enable_logger:
+            logging.getLogger().info(
+                "No mortality adjustment for state: %s", current_state
+            )
         return probs
 
     def walk(self, steps=None):
@@ -285,7 +307,6 @@ class HemophiliaMarkovChains(MarkovChains):
             if current_state == self.dead_state:
                 return  # Stop generator entirely — no more yields
 
-            # === Reward and store processing (identical to parent) ===
             reward_kwargs = {}
             for arg, func in self.store.items():
                 res = func(
@@ -677,6 +698,11 @@ class TransitionGenerator:
             matrix[idx] = probs
 
         return matrix
+
+    def numpy_matrix(self) -> np.ndarray:
+        """Return the transition matrix as a NumPy array."""
+        built_matrix = self.build()
+        return np.array(built_matrix, dtype=np.float64)
 
 
 def parallelize_markov_chain(
