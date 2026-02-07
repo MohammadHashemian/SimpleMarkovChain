@@ -16,7 +16,7 @@ import numpy as np
 
 
 def sample_population_abrs(
-    treatment: Treatment,
+    study_data: list["tuple"],
     n_samples: int = 64,
     visualize: bool = True,
 ) -> list[float]:
@@ -24,21 +24,13 @@ def sample_population_abrs(
     Samples ABR values to figure the real world patient abrs distribution
 
     Args:
-        - treatment: either "on_demand" or "prophylaxis"
-        expands new treatment by adding it to study_data array and defining new dtype.Treatment
+        - study_data: published articles data for annual bleeding rate reported as (Mean, SD)
         - n_samples: base sample size for sobol sampler
 
     Returns:
         list[float]: array of sampled annual bleeding rates
     """
-    if treatment not in ["on_demand", "prophylaxis"]:
-        raise ValueError("Invalid strategy")
-    # Published articles data for annual bleeding rate reported as (Mean, SD)
-    study_data = list(
-        constants.ON_DEMAND_ABR_REPORTS
-        if treatment == Treatment.ON_DEMAND.value
-        else constants.PROPHYLAXIS_ABR_REPORTS
-    )
+    #
     num_studies = len(study_data)
     # Dynamic lengthening
     problem = {
@@ -67,7 +59,7 @@ def sample_population_abrs(
         return max(0, np.random.gamma(k, theta))
 
     abr_values = [to_abr(params) for params in param_samples]
-    visualize_abr(abr_values, treatment) if visualize else None
+    visualize_abr(abr_values) if visualize else None
     return abr_values
 
 
@@ -317,6 +309,10 @@ def utility_reward_function(
             )
         category = constants.PETTERSSON_CATEGORIES[score]
         utility = constants.STATE_UTILITIES[category]
+        # Additional disutility when bleeding occurs in severe arthropathy
+        # as severe_arthropathy utility is less than bleeding by default
+        if category.lower() == "severe_arthropathy" and state_lower == "bleeding":
+            utility -= constants.SEVERE_ARTHROPATHY_BLEEDING_DISUTILITY
     else:
         utility = constants.STATE_UTILITIES[state]
 

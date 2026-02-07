@@ -38,7 +38,7 @@ def visualize_transition_matrix(
     plt.close()
 
 
-def visualize_abr(abr_values, strategy: str):
+def visualize_abr(abr_values, strategy: str | None = None):
     """
     Visualize sampled abr_values and draw histogram of it
 
@@ -56,7 +56,9 @@ def visualize_abr(abr_values, strategy: str):
         kde=True,
         color="blue" if strategy == "on_demand" else "green",
     )
-    plt.title(f"ABR Distribution for {strategy.capitalize()} Strategy")
+    plt.title(
+        f"ABR Distribution for {strategy.capitalize() if strategy else 'not-defined'} Strategy"
+    )
     plt.xlabel("Annual Bleeding Rate (ABR)")
     plt.ylabel("Frequency")
     plt.savefig(
