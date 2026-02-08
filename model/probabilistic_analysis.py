@@ -1,5 +1,5 @@
 from typing import List, Unpack
-from model import constants
+from model.constants import ModelConfig, DEFAULT_CONFIG
 from model.defined_types import Currencies
 from model.markov_chain import MarkovChains, Chain, TransitionGenerator
 from model.defined_types import (
@@ -66,17 +66,22 @@ def sample_population_abrs(
 def worker_function(
     markov: MarkovChains,
     worker_kwargs: HemophiliaInput,
+    config: ModelConfig | None = None,
 ) -> tuple[HemophiliaInput, HemophiliaOutput]:
     """
     Single markov model initializer function for given annual bleeding rate and treatment arm
 
     Args:
+        markov: MarkovChains instance to run
         worker_kwargs: Worker function keyword arguments
-        markov_chain: MarkovChains instance to run
+        config: Model configuration (uses DEFAULT_CONFIG if None)
 
     Returns:
         Tuple of (HemophiliaInput, HemophiliaOutput) containing simulation inputs and outputs
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     # ---- Unwrap key word arguments ----
     treatment: Treatment | None = worker_kwargs.get("treatment", None)
     if treatment is None or treatment not in Treatment:
@@ -92,17 +97,17 @@ def worker_function(
 
     # ---- Constructing Transition Pairs ----
     def _to_weekly(annual_rate: float) -> float:
-        return annual_rate / constants.WOY
+        return annual_rate / config.simulation.weeks_per_year
 
     # Annual values
     annual_rates = {
         "abr": abr,
-        "ajbr": abr * constants.AJBR_FRACTION,
-        "altb": abr * constants.LTB_FRACTION,
+        "ajbr": abr * config.clinical.ajbr_fraction,
+        "altb": abr * config.clinical.ltb_fraction,
         "aebr": (
-            abr - ((abr * constants.AJBR_FRACTION) + (abr * constants.LTB_FRACTION))
+            abr - ((abr * config.clinical.ajbr_fraction) + (abr * config.clinical.ltb_fraction))
         ),
-        "amr": constants.CRUDE_MORTALITY_RATE,
+        "amr": config.mortality.crude_annual_rate,
     }
 
     # Direct probability assignment for no_bleeding event
@@ -175,35 +180,41 @@ def worker_function(
     def _to_cost(
         dose: float | int,
         n: int,
-        unit: Currencies = constants.MODEL_CURRENCY,
-        ppp: bool = constants.REPORT_PPP,
+        unit: Currencies | None = None,
+        ppp: bool | None = None,
     ):
         if isinstance(dose, int):
             dose = float(dose)
+
+        if unit is None:
+            unit = config.economics.currency
+        if ppp is None:
+            ppp = config.economics.report_ppp
 
         if unit not in Currencies:
             raise ValueError(
                 "Can not calculate correct costs. wrong currency supplied."
             )
 
-        cost = dose * constants.PRICE_PER_UI_FACTOR_VIII
+        cost = dose * config.clinical.price_per_ui_factor_viii_irr
         if unit.upper() == "IRR":
             cost = cost
         elif unit.upper() == "TOMAN":
             cost = cost / 10
         elif unit == "USD" and not ppp:
-            cost = cost / constants.RIAL_USD_PRICE
+            cost = cost / config.clinical.rial_usd_price
         elif unit == "USD" and ppp:
-            cost = cost / constants.PPP_CONVERSION_FACTOR
+            cost = cost / config.economics.ppp_conversion_factor
 
-        if constants.DISCOUNT_RATE_WEEKLY:
-            cost = cost / (1 + constants.DISCOUNT_RATE_WEEKLY) ** n
+        discount_rate = config.economics.discount_rate_costs_weekly
+        if discount_rate:
+            cost = cost / (1 + discount_rate) ** n
         return cost
 
     def _to_annual(array: List | np.ndarray):
         if isinstance(array, List):
             array = np.array(array)
-        return array / (n_cycles / constants.WOY)
+        return array / (n_cycles / config.simulation.weeks_per_year)
 
     # Costs (corrected for consistent discounting and currency conversion)
     factor_costs = [_to_cost(dose, i) for i, dose in enumerate(factor_sequence)]
@@ -228,6 +239,7 @@ def worker_function(
 def factor_consumption(
     step: int,
     state: str,
+    config: ModelConfig | None = None,
     **kwargs,
 ) -> float:
     """
@@ -236,11 +248,15 @@ def factor_consumption(
     Args:
         step (int): Current markov cycle step.
         state (str): Current active state to be rewarded
+        config: Model configuration (uses DEFAULT_CONFIG if None)
         kwargs: Contains argument passed to markov instance from worker function to markov chains to reward function
 
     Returns:
         int: Total factor VIII consumption (IU).
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     # Unwrapping arguments
     try:
         treatment: Treatment | None = kwargs["treatment"]
@@ -259,13 +275,13 @@ def factor_consumption(
         )
 
     # Starting treatment from age 2 yo
-    ssp = constants.PEDIATRIC_STARTING_POINT
+    ssp = 2 * config.simulation.weeks_per_year
     weight = model_util.cal_body_weight(step, b=ssp)
     injected_dose = 0
 
     # Add prophylaxis baseline if applicable
     injected_dose += (
-        round(weight * constants.STANDARD_PROPHYLAXIS_WEEKLY_DOSE, 2)
+        round(weight * config.clinical.standard_prophylaxis_weekly_dose_ui, 2)
         if treatment == "prophylaxis"
         else 0
     )
@@ -274,13 +290,13 @@ def factor_consumption(
     # Bleeding-related consumption
     match state_lower:
         case "bleeding":
-            bd = constants.BLEEDING_DOSE
+            bd = config.clinical.bleeding_dose_ui
             injected_dose += round(weight * bd) * number_of_bleeds
         case "hemarthrosis":
-            jbd = constants.JOINT_BLEEDING_DOSE
+            jbd = config.clinical.joint_bleeding_dose_ui
             injected_dose += round(weight * jbd) * number_of_bleeds
         case "lt_bleeding":
-            ltbd = constants.LT_BLEEDING_DOSE
+            ltbd = config.clinical.lt_bleeding_dose_ui
             injected_dose += round(weight * ltbd)
         case "death":
             # to avoid assigning base prophylaxis dose to dead states
@@ -289,14 +305,21 @@ def factor_consumption(
 
 
 def utility_reward_function(
-    step: int, state: str, **kwargs: Unpack[HemophiliaRewardArgs]
+    step: int,
+    state: str,
+    config: ModelConfig | None = None,
+    **kwargs: Unpack[HemophiliaRewardArgs]
 ) -> float:
     """Returns utility values for each health state with event-based decay for healthy state."""
+    
+    if config is None:
+        config = DEFAULT_CONFIG
 
     def discount(value: float, step: int) -> float:
         """Apply weekly discounting if enabled."""
-        if constants.DISCOUNT_RATE_WEEKLY is not None:
-            return value / (1 + constants.DISCOUNT_RATE_WEEKLY) ** step
+        discount_rate = config.economics.discount_rate_benefits_weekly
+        if discount_rate:
+            return value / (1 + discount_rate) ** step
         return value
 
     state_lower = state.lower()
@@ -307,17 +330,17 @@ def utility_reward_function(
             raise ValueError(
                 "No pettersson_score argument passed to utility reward function"
             )
-        category = constants.PETTERSSON_CATEGORIES[score]
-        utility = constants.STATE_UTILITIES[category]
+        category = config.health_states.pettersson_categories[score]
+        utility = config.health_states.utilities[category]
         # Additional disutility when bleeding occurs in severe arthropathy
         # as severe_arthropathy utility is less than bleeding by default
         if category.lower() == "severe_arthropathy" and state_lower == "bleeding":
-            utility -= constants.SEVERE_ARTHROPATHY_BLEEDING_DISUTILITY
+            utility -= config.health_states.severe_arthropathy_bleeding_disutility
     else:
-        utility = constants.STATE_UTILITIES[state]
+        utility = config.health_states.utilities[state]
 
     # Normalize to per-week utility and apply discount
-    return discount(utility * (1 / constants.WOY), step)
+    return discount(utility * (1 / config.simulation.weeks_per_year), step)
 
 
 def count_bleeds(
@@ -366,17 +389,20 @@ def count_hemarthrosis(
     return count_bleeds(state, k_range, **kwargs)
 
 
-def construct_pettersson_calculator():
+def construct_pettersson_calculator(config: ModelConfig | None = None):
     """
     Factory function to create a pettersson reward function
     Tracks hemarthrosis
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     # Closure mutable containers
     hemarthrosis_count = [0]
 
     def to_pettersson_score(total_hemarthrosis: float) -> int:
         """Converts hemarthrosis bleeding count to pettersson joint health score"""
-        score = round(total_hemarthrosis / constants.PETTERSSON_CONVERSION_FACTOR, 0)
+        score = round(total_hemarthrosis / config.clinical.pettersson_conversion_factor, 0)
         if score >= 79:
             return 79
         return int(score)

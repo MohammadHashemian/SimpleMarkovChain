@@ -4,8 +4,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from model.utils import cal_body_weight, remove_outliers_robust
+from model.constants import ModelConfig, DEFAULT_CONFIG
 from src.utils.logger import get_logger
-import model.constants as constants
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import numpy as np
@@ -33,6 +33,7 @@ def extract(
     on_demand_results: Dict,
     prophylaxis_results: Dict,
     n_samples: int,
+    config: ModelConfig | None = None,
     remove_outliers=False,
 ) -> DataExtract:
     """
@@ -46,10 +47,14 @@ def extract(
         on_demand_results: Dictionary with model outputs for on-demand treatment
         prophylaxis_results: Dictionary with model outputs for prophylaxis treatment
         n_samples: Number of samples
+        config: Model configuration (uses DEFAULT_CONFIG if None)
 
     Returns:
         DataExtract: Object containing dataframes, ICER pairs, and categorized ICERs
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     # Extract data for plotting
     on_demand_abr = [inp["abr"] for inp in on_demand_inputs]
     prophylaxis_abr = [inp["abr"] for inp in prophylaxis_inputs]
@@ -63,8 +68,9 @@ def extract(
     prophylaxis_consumptions = prophylaxis_results["total_factors_use"]
     prophylaxis_annual_use = prophylaxis_results["annual_factor_consumption"]
     prophylaxis_utilities = prophylaxis_results["QALYS"]
-    # Array of weekly patients weight
-    body_weights = [cal_body_weight(i) for i in range(constants.LIFETIME_CYCLE_COUNTS)]
+    # Array of weekly patients weight - using 98 years lifetime
+    lifetime_cycles = 98 * config.simulation.weeks_per_year
+    body_weights = [cal_body_weight(i) for i in range(lifetime_cycles)]
 
     # Create DataFrames
     on_demand_df = pd.DataFrame(
@@ -188,7 +194,7 @@ def extract(
         pair = (icer, (dc, dq, da))
         if dc < 0 and dq > 0:  # Dominant
             dom.append(pair)
-        elif icer <= constants.WTP_THRESHOLD:  # Cost-effective
+        elif icer <= config.economics.wtp_threshold_local:  # Cost-effective
             ce.append(pair)
         else:  # Not cost-effective
             nce.append(pair)
@@ -418,10 +424,13 @@ def plot_qaly_vs_abr(data: DataExtract) -> Figure:
     return utility_fig
 
 
-def plot_icer_scatter(data: DataExtract) -> Figure:
+def plot_icer_scatter(data: DataExtract, config: ModelConfig | None = None) -> Figure:
     """
     Plot cost-effectiveness plane with ICER scatter.
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     # Plot
     icer_fig = plt.figure(figsize=(20, 10))
     icer_ax: Axes = icer_fig.add_subplot(1, 1, 1)
@@ -531,13 +540,14 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
 
     # Axes and lines
     x_rng = np.array([0, max(delta_qalys) + 1])
+    wtp = config.economics.wtp_threshold_local
     # Willingness to play line
     icer_ax.plot(
         x_rng,
-        x_rng * constants.WTP_THRESHOLD,
+        x_rng * wtp,
         "k--",
         alpha=0.8,
-        label=f"WTP: ${constants.WTP_THRESHOLD:,}/QALY",
+        label=f"WTP: ${wtp:,}/QALY",
     )
     icer_ax.axhline(0, color="gray", linestyle="-", alpha=0.5)
     icer_ax.axvline(0, color="gray", linestyle="-", alpha=0.5)
@@ -603,7 +613,7 @@ def plot_icer_scatter(data: DataExtract) -> Figure:
             [0],
             linestyle="--",
             color="black",
-            label=f"WTP: ${constants.WTP_THRESHOLD:,}/QALY",
+            label=f"WTP: ${wtp:,}/QALY",
         ),
     ]
     icer_ax.legend(handles=legend_elements, loc="lower right")
@@ -686,10 +696,14 @@ def plot(
     on_demand_results: Dict,
     prophylaxis_results: Dict,
     n_samples: int,
+    config: ModelConfig | None = None,
 ) -> Dict[str, Figure]:
     """
     Generate all plots and return a dictionary of figures.
     """
+    if config is None:
+        config = DEFAULT_CONFIG
+
     figures: Dict[str, Figure] = {}
     data = extract(
         on_demand_inputs,
@@ -697,20 +711,28 @@ def plot(
         on_demand_results,
         prophylaxis_results,
         n_samples,
+        config,
     )
+
+    # Create wrapper functions that pass config to plotting functions
+    def plot_icer_scatter_wrapper(d):
+        return plot_icer_scatter(d, config)
 
     plot_functions = {
         "factor_consumptions": plot_consumption_vs_abr,
         "factor_histogram": plot_consumption_hist,
         "costs_per_abr": plot_costs_vs_abr,
         "qalys_per_abr": plot_qaly_vs_abr,
-        "incremental_cost_effectiveness": plot_icer_scatter,
+        "incremental_cost_effectiveness": plot_icer_scatter_wrapper,
         "icer_histogram": plot_icer_histogram,
     }
 
     for key, func in plot_functions.items():
         try:
-            fig = func(data)
+            if key == "incremental_cost_effectiveness":
+                fig = func(data)
+            else:
+                fig = func(data)
             figures[key] = fig
         except Exception as e:
             logger.error(f"Error in {func.__name__}: {str(e)}")

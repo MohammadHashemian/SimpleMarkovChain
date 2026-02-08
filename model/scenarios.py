@@ -10,6 +10,7 @@ class ScenarioConfig:
     n_cycles: int
     start_age: int
     discounting: bool
+    description: str | None = None
 
 
 def build_config(base: ModelConfig, scenario: ScenarioConfig) -> ModelConfig:

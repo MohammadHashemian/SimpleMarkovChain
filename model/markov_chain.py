@@ -710,6 +710,7 @@ def parallelize_markov_chain(
     worker_inputs: list[T],
     worker_func: Callable[[MarkovChains, T], tuple[T, U]],
     markov_chain: MarkovChains,
+    config = None,
 ) -> tuple[list[T], list[U]]:
     """
     Summary
@@ -720,8 +721,9 @@ def parallelize_markov_chain(
     Args:
         simulation_name: name to be shown on progress bar
         worker_inputs: list of keyword arguments to worker_function
-        worker_function: a function that should accept the markov_chain and input dictionaries
+        worker_func: a function that should accept the markov_chain and input dictionaries
         markov_chain: markov chain class instance to parallelize within worker function
+        config: Model configuration to pass to worker_func (optional)
 
     Returns:
         tuple: of ([inputs], [outputs])
@@ -746,7 +748,7 @@ def parallelize_markov_chain(
         async_results = [
             pool.apply_async(
                 func=worker_func,
-                args=(markov_chain, worker_kwargs),
+                args=(markov_chain, worker_kwargs, config),
                 callback=update_bar,
                 error_callback=error_handler,
             )
