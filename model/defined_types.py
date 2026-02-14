@@ -1,48 +1,54 @@
-from typing import TypedDict, Optional, Union
+from typing import Optional, Union
 from enum import StrEnum
+from dataclasses import dataclass, asdict
 from model.markov_chain import MarkovResult
-from dataclasses import dataclass
+from model.config import ModelConfig
 import numpy as np
 
-# dtype -> Defined Types
 
-
-class Currencies(StrEnum):
-    IRR = "irr"
-    TOMAN = "toman"
-    USD = "usd"
-
-
-class Treatment(StrEnum):
+class Regime(StrEnum):
     ON_DEMAND = "on_demand"
     PROPHYLAXIS = "prophylaxis"
 
 
-class HemophiliaInput(TypedDict):
-    treatment: Treatment
-    abr: Union[np.float64, float]
-    ajbr: Optional[Union[np.float64, float]]
-    wbr: Optional[Union[np.float64, float]]
-    wjbr: Optional[Union[np.float64, float]]
-    webr: Optional[Union[np.float64, float]]
+@dataclass
+class ModelInputAbs:
+    """Common interface for model inputs, to be extended by specific model input dataclasses"""
+
+    config: ModelConfig
 
 
-class HemophiliaRewardArgs(HemophiliaInput):
-    """
-    Summary
-    -------
-    Extends Hemophilia Input dictionary to type the reward keyword arguments
+@dataclass
+class HemophiliaInput(ModelInputAbs):
+    treatment: Regime
+    abr: np.float64 | float
+    ajbr: Optional[Union[np.float64, float]] = None
+    wbr: Optional[Union[np.float64, float]] = None
+    wjbr: Optional[Union[np.float64, float]] = None
+    webr: Optional[Union[np.float64, float]] = None
 
-    Note:
-    -------
-    Do not forget to add new store shared reward states name to this typed dictionary
-    """
+    def to_dict(self):
+        """
+        Excremental method to convert dataclass to dictionary with string values for better readability in logs and progress bars.
+        losses config as object, use to_dictionary method to preserve config as object in the dictionary.
+        """
+        return {k: str(v) for k, v in asdict(self).items()}
 
-    number_of_bleeds: int | None
-    number_of_hemarthrosis: int | None
-    pettersson_score: int | None
+    def to_dictionary(self):
+        """Convert to dict while preserving config as object"""
+        d = {
+            "config": self.config,  # Keep as object
+            "treatment": self.treatment,
+            "abr": self.abr,
+            "ajbr": self.ajbr,
+            "wbr": self.wbr,
+            "wjbr": self.wjbr,
+            "webr": self.webr,
+        }
+        return d
 
 
+# Pydantic
 class HemophiliaOutput(MarkovResult):
     """
     Specified markov model simulation results
@@ -58,22 +64,18 @@ class HemophiliaOutput(MarkovResult):
     pettersson_score: list[int | float]
 
 
-# TODO:
-# Should i use dataclasses instead of typed dictionary? to get ride of Key Errors
-
-
 @dataclass
-class HemophiliaInputs:
-    treatment: Treatment
-    abr: np.float64 | float
-    ajbr: Optional[Union[np.float64, float]] = None
-    wbr: Optional[Union[np.float64, float]] = None
-    wjbr: Optional[Union[np.float64, float]] = None
-    webr: Optional[Union[np.float64, float]] = None
+class HemophiliaRewardArgs(HemophiliaInput):
+    """
+    Summary
+    -------
+    Extends Hemophilia Input dictionary to type the reward keyword arguments
 
+    Note:
+    -------
+    Do not forget to add new store shared reward states name to this typed dictionary
+    """
 
-@dataclass
-class HemophiliaOutputs:
-    number_of_bleeds: int = 0
-    number_of_hemarthrosis: int = 0
-    pettersson_score = 0
+    number_of_bleeds: int | None = None
+    number_of_hemarthrosis: int | None = None
+    pettersson_score: int | None = None

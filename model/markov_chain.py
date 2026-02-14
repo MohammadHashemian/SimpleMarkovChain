@@ -9,15 +9,15 @@ from typing import (
     Tuple,
     Any,
     TypeVar,
+    Protocol,
 )
 from collections import OrderedDict
 from pydantic import BaseModel
 from model.utils import prob_at_least_one
 from pathlib import Path
 import numpy as np
-import enlighten
-import multiprocessing
 import logging
+from dataclasses import asdict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,6 +33,13 @@ class Chain:
 
         if matrix.shape != (len(states), len(states)):
             raise ValueError("Transition matrix should be in cubic shape")
+
+
+class MarkovModel(Protocol):
+    def run(self) -> List[str]: ...
+    def collect_rewards(self) -> Dict[str, List[float | int]]: ...
+    def add_reward_function(self, func: Callable) -> None: ...
+    def add_store_function(self, arg_name: str, func: Callable) -> None: ...
 
 
 class MarkovChains:
@@ -63,19 +70,19 @@ class MarkovChains:
     ) -> None:
         self.steps = steps
         self.chains = chains
-        self.chains_map = {chain.name: chain for chain in chains}
+        self._chains_map = {chain.name: chain for chain in chains}
         self.conditions = conditions or {}
         self.worker_kwargs = worker_kwargs or {}
-        self.reward_functions: List[Callable] = []
-        self.rewards: Dict[str, List[float | int]] = {}
+        self._reward_functions: List[Callable] = []
+        self._rewards: Dict[str, List[float | int]] = {}
         self.entrance = entrance
-        self.current_chain_name = entrance_chain
-        self.store: Dict[str, Callable] = OrderedDict()
+        self._current_chain_name = entrance_chain
+        self._store: Dict[str, Callable] = OrderedDict()
 
         # Validate chains
-        if entrance_chain not in self.chains_map.keys():
+        if entrance_chain not in self._chains_map.keys():
             raise ValueError(f"Start chain '{entrance_chain}' not in provided chains")
-        if entrance not in self.chains_map[entrance_chain].states:
+        if entrance not in self._chains_map[entrance_chain].states:
             raise ValueError(
                 f"Start state '{entrance}' not in states list of chain '{entrance_chain}'"
             )
@@ -90,24 +97,38 @@ class MarkovChains:
                 )
 
         # Set initial state index
-        self.current_state_idx = self.chains_map[entrance_chain].states.index(entrance)
+        self.current_state_idx = self._chains_map[entrance_chain].states.index(entrance)
+
+    def _worker_kwargs_dict(self) -> dict:
+        """Return worker kwargs as a dict whether originally a dict or a dataclass/object."""
+        if self.worker_kwargs is None:
+            return {}
+        if isinstance(self.worker_kwargs, dict):
+            return self.worker_kwargs
+        try:
+            return asdict(self.worker_kwargs)
+        except Exception:
+            try:
+                return dict(vars(self.worker_kwargs))
+            except Exception:
+                return {}
 
     def add_reward_function(self, func: Callable) -> None:
         """Add a reward function to be calculated at each step."""
-        self.reward_functions.append(func)
-        self.rewards[func.__name__] = []
+        self._reward_functions.append(func)
+        self._rewards[func.__name__] = []
 
     def add_store_function(self, arg_name: str, func: Callable) -> None:
         """
         Adds a reward function that will be called prior to normal reward functions,
         and it's results will be passed to normal reward functions
         """
-        self.store[arg_name] = func
-        self.rewards[arg_name] = []
+        self._store[arg_name] = func
+        self._rewards[arg_name] = []
 
     def _get_current_chain(self) -> Chain:
         """Returns the active chain for states and transition extractions"""
-        return self.chains_map[self.current_chain_name]
+        return self._chains_map[self._current_chain_name]
 
     def walk(self, steps: Optional[int] = None) -> Generator[str, None, None]:
         """Generate a sequence of states for the specified number of steps."""
@@ -121,38 +142,38 @@ class MarkovChains:
 
             # Process store functions
             reward_kwargs = {}
-            for arg, func in self.store.items():
+            for arg, func in self._store.items():
                 res = func(
                     state=states[current_state_idx],
-                    chain=self.current_chain_name,
-                    **self.worker_kwargs,
+                    chain=self._current_chain_name,
+                    **self._worker_kwargs_dict(),
                     **reward_kwargs,
                 )
                 reward_kwargs[arg] = res
-                self.rewards[arg].append(res)
+                self._rewards[arg].append(res)
 
             # Process reward functions
-            for func in self.reward_functions:
+            for func in self._reward_functions:
                 reward = func(
                     step=step,
                     state=states[current_state_idx],
-                    chain=self.current_chain_name,
+                    chain=self._current_chain_name,
                     **reward_kwargs,
-                    **self.worker_kwargs,
+                    **self._worker_kwargs_dict(),
                 )
-                self.rewards[func.__name__].append(reward)
+                self._rewards[func.__name__].append(reward)
 
             # Skip transition for final step
             if step < self.steps:
                 # Check for chain switch
                 for chain_name, condition in self.conditions.items():
-                    if chain_name != self.current_chain_name and condition(
+                    if chain_name != self._current_chain_name and condition(
                         step,
                         states[current_state_idx],
-                        self.current_chain_name,
-                        **self.worker_kwargs,
+                        self._current_chain_name,
+                        **self._worker_kwargs_dict(),
                     ):
-                        self.current_chain_name = chain_name
+                        self._current_chain_name = chain_name
                         current_active_chain = self._get_current_chain()
                         states, transitions = (
                             current_active_chain.states,
@@ -171,7 +192,7 @@ class MarkovChains:
 
     def collect_rewards(self) -> Dict[str, List[float | int]]:
         """Return all collected rewards for each reward function."""
-        return self.rewards
+        return self._rewards
 
     def run(self) -> List[str]:
         """Run the Markov chain and return the complete sequence of states."""
@@ -181,6 +202,12 @@ class MarkovChains:
 class HemophiliaMarkovChains(MarkovChains):
     """
     Extension for hemophilia markov model with weekly cycles and age-specific mortality runtime adjustment.
+    rewards are collectable after each step and can be based on current state, chain, step, and any stored intermediate results from store functions.
+
+    :param mortality_func: A function that takes age and returns annual mortality rate per 1000. If None, no adjustment is made.
+    :param original_rate_per_1000: The original annual mortality rate per 1000 embedded in the base transition matrix (default 7.76 per 1000).
+    :start_age: The starting age of the cohort (default 1 year).
+    :dead_state: The name of the absorbing death state in the model (default "dead").
 
     Key changes:
         - Only modifies transition probabilities at runtime.
@@ -308,25 +335,25 @@ class HemophiliaMarkovChains(MarkovChains):
                 return  # Stop generator entirely — no more yields
 
             reward_kwargs = {}
-            for arg, func in self.store.items():
+            for arg, func in self._store.items():
                 res = func(
                     state=states[current_state_idx],
-                    chain=self.current_chain_name,
-                    **self.worker_kwargs,
+                    chain=self._current_chain_name,
+                    **self._worker_kwargs_dict(),
                     **reward_kwargs,
                 )
                 reward_kwargs[arg] = res
-                self.rewards[arg].append(res)
+                self._rewards[arg].append(res)
 
-            for func in self.reward_functions:
+            for func in self._reward_functions:
                 reward = func(
                     step=step,
                     state=states[current_state_idx],
-                    chain=self.current_chain_name,
+                    chain=self._current_chain_name,
                     **reward_kwargs,
-                    **self.worker_kwargs,
+                    **self._worker_kwargs_dict(),
                 )
-                self.rewards[func.__name__].append(reward)
+                self._rewards[func.__name__].append(reward)
 
             if step < steps:
                 for chain_name, condition in self.conditions.items():
@@ -334,7 +361,7 @@ class HemophiliaMarkovChains(MarkovChains):
                         step,
                         states[current_state_idx],
                         self.current_chain_name,
-                        **self.worker_kwargs,
+                        **self._worker_kwargs_dict(),
                     ):
                         self.current_chain_name = chain_name
                         current_chain = self._get_current_chain()
@@ -703,60 +730,3 @@ class TransitionGenerator:
         """Return the transition matrix as a NumPy array."""
         built_matrix = self.build()
         return np.array(built_matrix, dtype=np.float64)
-
-
-def parallelize_markov_chain(
-    simulation_name: str,
-    worker_inputs: list[T],
-    worker_func: Callable[[MarkovChains, T], tuple[T, U]],
-    markov_chain: MarkovChains,
-    config = None,
-) -> tuple[list[T], list[U]]:
-    """
-    Summary
-    -------
-    Gets a worker function with its arguments as a list of dictionaries,
-    then uses multiprocessing to pass each dictionary to worker function and returns the results.
-
-    Args:
-        simulation_name: name to be shown on progress bar
-        worker_inputs: list of keyword arguments to worker_function
-        worker_func: a function that should accept the markov_chain and input dictionaries
-        markov_chain: markov chain class instance to parallelize within worker function
-        config: Model configuration to pass to worker_func (optional)
-
-    Returns:
-        tuple: of ([inputs], [outputs])
-    """
-    model_inputs = []
-    model_outputs = []
-
-    manager = enlighten.get_manager()
-    progress_bar: enlighten.Counter = manager.counter(
-        total=len(worker_inputs),
-        desc=f"Simulating {simulation_name}:",
-        unit="simulation",
-    )
-
-    def update_bar(_):
-        progress_bar.update(incr=1)
-
-    def error_handler(e: BaseException):
-        raise ValueError(f"simulation failed {e}")
-
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        async_results = [
-            pool.apply_async(
-                func=worker_func,
-                args=(markov_chain, worker_kwargs, config),
-                callback=update_bar,
-                error_callback=error_handler,
-            )
-            for worker_kwargs in worker_inputs
-        ]
-        for res in async_results:
-            input_dict, output = res.get()
-            model_inputs.append(input_dict)
-            model_outputs.append(output)
-    manager.stop()
-    return model_inputs, model_outputs

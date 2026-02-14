@@ -1,9 +1,15 @@
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Dict, List, Literal, Optional, Tuple
 
-from model.defined_types import Currencies
 
 # TODO: Refactor the functions with new settings structure
+
+
+class Currencies(StrEnum):
+    IRR = "irr"
+    TOMAN = "toman"
+    USD = "usd"
 
 
 class DevelopmentMode:
@@ -14,7 +20,10 @@ class DevelopmentMode:
 class SimulationSettings:
     """General simulation control parameters."""
 
-    n_cycles: int | None = None
+    n_cycles: int = (
+        98 * 52
+    )  # Lifetime cycles (98 years × 52 weeks) Placeholder value, can be overridden by scenarios
+    seed: int = 468498
     weeks_per_year: int = 52
     development_model: bool = DevelopmentMode.ACTIVE
     base_sobol_sample_size: int = field(
@@ -182,66 +191,109 @@ class ClinicalInputs:
     # Annual bleeding rates – on-demand (mean, sd)
     on_demand_abr_reports: List[Tuple[float, float]] = field(
         default_factory=lambda: [
-            (58.3, 26.9),
-            (37.2, 19.9),
-            (19.5, 15.0),
-            (17.7, 11.7),
-            (7.4, 9.5),
-            (16.8, 10.0),
-            (13.8, 12.6),
-            (12.2, 18.1),
-            (11.5, 11.5),
-            (7.0, 6.4),
-            (4.5, 0.7),
-            (19.4, 10.6),
-            (14.0, 12.3),
-            (18.4, 14.3),
-            (15.8, 8.13),
-            (58.9, 16.6),
-            (5.6, 1.83),
-            (13.9, 4.47),
-            (57.7, 24.6),
-            (37.9, 33.08),
-            (22.2, 7.0),
-            (17.7, 9.3),
-            (17.69, 9.25),
-            (13, 9),
-            (24, 12),
-            (35.8, 24.8),
-            (21.42, 9.59),
-            (35.7, 22.2),
-            (22.2, 7.0),
+            (58.3, 26.9),  # Zhao et al. (median 12 y 1-50 y) 10.1177/1076029621989811
+            (37.2, 19.9),  # Manco-Johnson MJ et al. (12-50) 10.1111/jth.13811
+            (19.5, 15.0),  # Tagliaferri A et al. (12-25 y) 10.1160/TH14-05-0407
+            (17.7, 11.7),  # Tagliaferri A et al. (26-55 y) 10.1160/TH14-05-0407
+            (7.4, 9.5),  # Romanová G et al. (>=18 y, n=302) 10.1007/s00277-023-05453-6
+            (16.8, 10.0),  # Belgium
+            (13.8, 12.6),  # France
+            (12.2, 18.1),  # Germany
+            (11.5, 11.5),  # Italy
+            (7.0, 6.4),  # Spain
+            (4.5, 0.7),  # Sweden
+            (19.4, 10.6),  # UK
+            (
+                14.0,
+                12.3,
+            ),  # Khair K et al. (median 17 y - n:299) 10.1111/hae.13361 - First year
+            (18.4, 14.3),  # Khair K et al. - Second year
+            (15.8, 8.13),  # Khair K et al. - Third year
+            (58.9, 16.6),  # Zhao et al. (2-12 y, n=30) 10.1080/08880018.2017.1313921
+            (5.6, 1.83),  # Eshghi et al. (<15 y, n=24) 10.1177/1076029616685429
+            (13.9, 4.47),  # Roberto Musso (23.6 y, n=220) 10.1160/TH07-06-0409
+            (57.7, 24.6),  # K. Kavakli (12-65 mean 28y) 10.1111/jth.12828
+            (
+                37.9,
+                33.08,
+            ),  # Fukutake (352 PTPs, 75.6% severe, 1-76 mean 25.8 y) 10.1007/s12185-018-02574-x
+            (22.2, 7.0),  # Ying Liu (n=34; 4-18y, mean 12.2y) 10.1111/hae.14016
+            (
+                17.7,
+                9.3,
+            ),  # B Warren (n:37, 2.5 up to 7.5y) 10.1182/bloodadvances.2019001311
+            (
+                17.69,
+                9.25,
+            ),  # Marilyn J. Manco-Johnson (<1.5y to 6y, n:65) 10.1056/NEJMoa067659
+            (
+                13,
+                9,
+            ),  # Melissa Kern (n:15, pre target joint) 10.1016/j.jpeds.2004.06.082
+            (
+                24,
+                12,
+            ),  # Melissa Kern (n:15, post target joint) 10.1016/j.jpeds.2004.06.082
+            (
+                35.8,
+                24.8,
+            ),  # A. Tagliaferri (n: 83, median 23.6, 10-72y) 10.1111/j.1365-2516.2008.01791.x
+            (21.42, 9.59),  # Aznar (n: 15, 26-47 mean 35.6) 10.1111/vox.12066
+            (
+                35.7,
+                22.2,
+            ),  # von Drygalski (26 adults, mean 42.8 y) 10.1056/NEJMoa2209226
+            (22.2, 7.0),  # Liu, ODT group (n=18, age 12.4 SD 4.1) 10.1111/hae.14016
         ]
     )
 
+    # Annual bleeding rates – prophylaxis (mean, sd)
     prophylaxis_abr_reports: List[Tuple[float, float]] = field(
         default_factory=lambda: [
-            (2.5, 4.6),
-            (2.5, 4.7),
-            (2.6, 2.2),
-            (4.5, 7.1),
-            (2.1, 2.1),
-            (4.1, 6.9),
-            (8.0, 9.4),
-            (4.5, 5.3),
-            (2.8, 4.7),
-            (2.7, 2.5),
-            (1.9, 2.9),
-            (5.8, 7.0),
-            (3.5, 4.3),
-            (3.3, 4.1),
-            (3.7, 3.9),
-            (3.0, 5.9),
-            (1.86, 1.52),
-            (4.8, 5.0),
-            (4.3, 6.5),
-            (8.9, 19.61),
-            (3.5, 2.1),
-            (6.2, 5.3),
-            (3.27, 6.24),
-            (4.2, 3.7),
-            (1.82, 2.87),
-            (3.2, 5.4),
+            (2.5, 4.6),  # Zhao et al. (median 12 y 1-50 y) 10.1177/1076029621989811
+            (2.5, 4.7),  # Manco-Johnson MJ et al. (12-50) 10.1111/jth.13811
+            (2.6, 2.2),  # Tagliaferri A et al. (12-25 y) 10.1160/TH14-05-0407
+            (4.5, 7.1),  # Tagliaferri A et al. (26-55 y) 10.1160/TH14-05-0407
+            (2.1, 2.1),  # Romanová G et al. (>=18 y, n=302) 10.1007/s00277-023-05453-6
+            (4.1, 6.9),  # Belgium
+            (8.0, 9.4),  # France
+            (4.5, 5.3),  # Germany
+            (2.8, 4.7),  # Italy
+            (2.7, 2.5),  # Spain
+            (1.9, 2.9),  # Sweden
+            (5.8, 7.0),  # UK
+            (
+                3.5,
+                4.3,
+            ),  # Khair K et al. (median 17 y - n:299) 10.1111/hae.13361 - First year
+            (3.3, 4.1),  # Khair K et al. - Second year
+            (3.7, 3.9),  # Khair K et al. - Third year
+            (3.0, 5.9),  # Zhao et al. (2-12 y, n=30) 10.1080/08880018.2017.1313921
+            (1.86, 1.52),  # Eshghi et al. (<15 y, n=24) 10.1177/1076029616685429
+            (4.8, 5.0),  # Roberto Musso (23.6 y, n=220) 10.1160/TH07-06-0409
+            (4.3, 6.5),  # K. Kavakli (12-65 mean 28y) 10.1111/jth.12828
+            (
+                8.9,
+                19.61,
+            ),  # Fukutake (352 PTPs, 75.6% severe, 1-76 mean 25.8 y) 10.1007/s12185-018-02574-x
+            (
+                3.5,
+                2.1,
+            ),  # Beth Boulden Warren (n:37, 2.5 up to 18y) - Early proph group 10.1182/bloodadvances.2019001311
+            (
+                6.2,
+                5.3,
+            ),  # Beth Boulden Warren - Post-proph group 10.1182/bloodadvances.2019001311
+            (
+                3.27,
+                6.24,
+            ),  # Marilyn J. Manco-Johnson (<1.5y to 6y, n:65) 10.1056/NEJMoa067659
+            (
+                4.2,
+                3.7,
+            ),  # A. Tagliaferri (n: 83, median 23.6, 10-72y) 10.1111/j.1365-2516.2008.01791.x
+            (1.82, 2.87),  # Aznar (n: 15, 26-47 mean 35.6) 10.1111/vox.12066
+            (3.2, 5.4),  # von Drygalski (133, ≥12 y, mean 33.9 y) 10.1056/NEJMoa2209226
         ]
     )
 
@@ -252,25 +304,36 @@ class ClinicalInputs:
         }
     )
 
-    ajbr_fraction: float = 0.75  # joint bleeds / all bleeds
-    ltb_fraction: float = 0.045  # life-threatening bleeds / all
+    # Bleeding fractions and rates
+    ajbr_fraction: float = 0.75  # Percentage of joint bleeds from all bleed events
+    # Percent of life threatening bleeds from all bleed events
+    ltb_fraction: float = 0.045
+    # On-demand LTB rate per 100k per year
     od_ltb_rate_per_100k: float = 255 / 100_000
+    # Prophylaxis LTB rate per 100k per year
     pro_ltb_rate_per_100k: float = 166 / 100_000
 
-    early_arthropathy_rate: float = 0.05  # lambda – probability per hemarthrosis?
-
+    # Arthropathy progression
+    # Lambda – probability per hemarthrosis (Rate indicates frequency of Hemarthrosis causes permanent joint damage)
+    early_arthropathy_rate: float = 0.05
+    # Factor to convert hemarthrosis count to Pettersson score
     pettersson_conversion_factor: float = 12.6
 
-    # Treatment / dosing
-    rial_usd_price: int = 853_661
+    # Economic parameters
+    rial_usd_price: int = 853_661  # TGJU IRR/USD exchange rate
+    # IRR per unit (IU) of Factor VIII, FDA standard
     price_per_ui_factor_viii_irr: int = 58_000
 
+    # Treatment dosing (Intensity Regimen Protocol)
+    # IR Protocol: 50 IU/kg twice weekly
     ir_prophylaxis_weekly_dose_ui: int = 25 * 2
+    # Standard Protocol: 25 IU/kg three times weekly
     standard_prophylaxis_weekly_dose_ui: int = 25 * 3
 
-    bleeding_dose_ui: int = 30 * 4
-    joint_bleeding_dose_ui: int = 30 * 2
-    lt_bleeding_dose_ui: int = 550
+    # Bleeding treatment doses (per bleeding event, before body weight adjustment)
+    bleeding_dose_ui: int = 30 * 4  # Standard bleeding dose: 30 IU/kg × 4 injections
+    joint_bleeding_dose_ui: int = 30 * 2  # Joint bleeding dose: 30 IU/kg × 2 injections
+    lt_bleeding_dose_ui: int = 550  # Life-threatening bleeding dose: 550 IU/kg
 
 
 @dataclass(frozen=True)
@@ -288,6 +351,27 @@ class ModelConfig:
 # Default global configuration instance
 # ============================================================================
 DEFAULT_CONFIG = ModelConfig()
+
+
+# ============================================================================
+# Pickle-friendly wrapper for mortality probability calculation
+# ============================================================================
+# This function is defined at module level to be pickle-safe for multiprocessing
+def get_annual_mortality_probability(age: int, use_age_specific: bool = True) -> float:
+    """
+    Module-level wrapper for mortality probability calculation.
+
+    This ensures the function can be properly pickled by multiprocessing,
+    unlike bound methods on dataclass instances.
+
+    Args:
+        age: Age in years
+        use_age_specific: If True, use age-specific rates; else use crude rate
+
+    Returns:
+        Annual mortality probability
+    """
+    return Mortality.get_annual_probability(age, use_age_specific)
 
 
 # ============================================================================
@@ -326,7 +410,7 @@ def get_gdp_per_capita() -> float:
 
 def get_discount_rate_weekly(rate_type: str = "costs") -> float:
     """Get weekly discount rate.
-    
+
     Args:
         rate_type: Either 'costs' or 'benefits'
     """
@@ -387,7 +471,7 @@ STATES = DEFAULT_CONFIG.health_states.STATES
 def get_mortality_rate(age: int, use_age_specific: bool = True) -> float:
     """
     Return annual mortality probability for a given age.
-    
+
     This delegates to the Mortality dataclass method.
 
     Reference: https://ourworldindata.org/grapher/annual-death-rate-by-age-group?country=~POL

@@ -4,7 +4,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from model.utils import cal_body_weight, remove_outliers_robust
-from model.constants import ModelConfig, DEFAULT_CONFIG
+from model.config import ModelConfig, DEFAULT_CONFIG
 from src.utils.logger import get_logger
 import matplotlib.pyplot as plt
 import statsmodels.api as sm

@@ -1,15 +1,5 @@
-from model.utils import prob_at_least_one, poisson_mass_function
-from model.constants import (
-    WOY,
-    AJBR_FRACTION,
-    LTB_FRACTION,
-    STATES,
-    CRUDE_MORTALITY_RATE,
-    get_mortality_rate,
-)
 import numpy as np
 import pytest
-
 import logging
 import sys
 
@@ -25,11 +15,13 @@ def get_linear_abrs():
 
 @pytest.fixture()
 def hemophilia_markov_chain():
-    from model.markov_chain import HemophiliaMarkovChains
     from model.markov_chain import Chain
+    from model.markov_chain import HemophiliaMarkovChains
     from model.markov_chain import TransitionGenerator
+    from model.config import DEFAULT_CONFIG
 
     chains = []
+    STATES = DEFAULT_CONFIG.health_states.STATES
     chain_main = Chain(
         name="main",
         states=STATES,
@@ -37,6 +29,10 @@ def hemophilia_markov_chain():
             N=len(STATES), M=len(STATES), dtype=np.float64
         ),  # Identity matrix as placeholder
     )
+    WOY = DEFAULT_CONFIG.simulation.weeks_per_year
+    AJBR_FRACTION = DEFAULT_CONFIG.clinical.ajbr_fraction
+    LTB_FRACTION = DEFAULT_CONFIG.clinical.ltb_fraction
+    CRUDE_MORTALITY_RATE = DEFAULT_CONFIG.mortality.crude_annual_rate
     bleed_rate = 22 / WOY  # Average ABR of 22 converted to weekly rate
     hemarthrosis_rate = bleed_rate * AJBR_FRACTION
     ltbr = bleed_rate * LTB_FRACTION
@@ -87,7 +83,7 @@ def hemophilia_markov_chain():
         dead_state="Death",
         steps=520,
         start_age=2,
-        mortality_func=get_mortality_rate,
+        mortality_func=DEFAULT_CONFIG.mortality.get_annual_probability,
         enable_logger=True,
     )
     return markov_chain
@@ -95,6 +91,12 @@ def hemophilia_markov_chain():
 
 # Assume states: [Healthy -Transitioning into---> [Bleeding, Hemarthrosis, LT_Bleeding, Death]]
 def test_probability(get_linear_abrs):
+    from model.utils import prob_at_least_one, poisson_mass_function
+    from model.config import DEFAULT_CONFIG
+
+    AJBR_FRACTION = DEFAULT_CONFIG.clinical.ajbr_fraction
+    LTB_FRACTION = DEFAULT_CONFIG.clinical.ltb_fraction
+    WOY = DEFAULT_CONFIG.simulation.weeks_per_year
     # annual values
     annual_abr: float = np.random.choice(get_linear_abrs)
     annual_ajbr: float = annual_abr * AJBR_FRACTION
@@ -214,3 +216,61 @@ def test_hemophilia_markov_chain_mortality_adjuster(hemophilia_markov_chain):
         "Healthy": "due natural cause of death",
     }
     logger.info(f"Cause of death: {cause_of_death_map[state_before_death]}")
+
+
+def test_worker_function_execution(hemophilia_markov_chain):
+    from model.config import DEFAULT_CONFIG
+    from model.probabilistic_analysis import worker_function
+    from model.scenarios import Scenario
+
+    TEST_SCENARIO = Scenario(
+        title="Test Scenario", n_cycles=10, discounting=False, start_age=2
+    )
+    TEST_CONFIG = TEST_SCENARIO.build_config(base=DEFAULT_CONFIG)
+
+    worker_kwargs = {
+        "treatment": "on_demand",
+        "abr": 22.0,
+        "config": TEST_CONFIG,
+    }
+    input, output = worker_function(hemophilia_markov_chain, worker_kwargs)
+    logger.info(
+        f"Worker function executed successfully with abr: {input.abr} and for: {output.steps} steps"
+    )
+
+
+def test_parallelized_markov_chain_execution(hemophilia_markov_chain):
+    from model.probabilistic_analysis import worker_function
+    from model.defined_types import HemophiliaInput
+    from model.scenarios import ModelRunner
+    from model.config import DEFAULT_CONFIG
+
+    simulation_name = "Test Parallelized Markov Chain Execution"
+    worker_inputs = [
+        HemophiliaInput(
+            **{
+                "treatment": "on_demand",
+                "abr": 22.0,
+                "config": DEFAULT_CONFIG,
+            }
+        ),
+        HemophiliaInput(
+            **{
+                "treatment": "prophylaxis",
+                "abr": 5.0,
+                "config": DEFAULT_CONFIG,
+            }
+        ),
+    ]
+    model_runner = ModelRunner(
+        title=simulation_name,
+        worker_func=worker_function,
+        worker_inputs=worker_inputs,
+        markov_model=hemophilia_markov_chain,
+        base_config=DEFAULT_CONFIG,
+    )
+    model_inputs, model_outputs = model_runner.run_model_multi_thread()
+    assert len(model_inputs) == len(worker_inputs)
+    assert len(model_outputs) == len(worker_inputs)
+    logger.info(f"Model inputs: {model_inputs}")
+    logger.info(f"Model outputs: {model_outputs}")
