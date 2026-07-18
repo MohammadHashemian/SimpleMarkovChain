@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pandas as pd
-from IPython.display import display
 
 from utils.logging import setup_root_logger
 
@@ -29,6 +28,8 @@ def show(
 
     if format:
         style = style.format(format)
+
+    from IPython.display import display
 
     display(style)
     logger = setup_root_logger()
