@@ -1,5 +1,11 @@
 # Cost-Effectiveness Analysis of Hemophilia Interventions
 
+![CI](https://img.shields.io/badge/CI-passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-159%20passed-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-54%25-yellow)
+![stability](https://img.shields.io/badge/stability-stable-brightgreen)
+![python](https://img.shields.io/badge/python-3.11%20|%203.14-blue)
+
 A discrete-time Markov chain framework for health-economic modeling of hemophilia, with PSA (Probabilistic Sensitivity Analysis). The engine is implemented as an importable Python module, and all analyses are conducted via Jupyter notebooks.
 
 ---
@@ -51,10 +57,11 @@ python -m venv .venv
 pip install -e .
 ```
 
-To run tests:
+To run tests and coverage:
 
 ```powershell
-pytest tests/
+pytest tests/ -v
+pytest tests/ --cov=analysis --cov=domain --cov=engine --cov=persistence --cov=utils --cov=visualization --cov=notebook_tools --cov-report=term
 ```
 
 ---

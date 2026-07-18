@@ -52,6 +52,9 @@ results/summary.md
 # Linter cache
 .ruff_cache/
 
+# Coverage reports
+.coverage
+
 # OS junk
 Thumbs.db
 .DS_Store
