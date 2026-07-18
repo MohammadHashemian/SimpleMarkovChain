@@ -1,7 +1,8 @@
-from utils.path_utils import get_project_root
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+
+from utils.path_utils import get_project_root
 
 PROJECT_ROOT = get_project_root()
 

@@ -1,9 +1,12 @@
-from typing import Dict, Optional, Protocol, Sequence, Any
-from pydantic import BaseModel, Field
-from persistence.schemas.clinicals import StudyEstimate
+from collections.abc import Sequence
+from typing import Any, Protocol
+
+import arviz as az
 import numpy as np
 import pymc as pm
-import arviz as az
+from pydantic import BaseModel, Field
+
+from persistence.schemas.clinicals import StudyEstimate
 
 
 class Distribution(Protocol):
@@ -252,8 +255,8 @@ class Bayesian:
 
         # Internal state
 
-        self.model: Optional[pm.Model] = None
-        self.trace: Optional[az.InferenceData] = None
+        self.model: pm.Model | None = None
+        self.trace: az.InferenceData | None = None
 
         self._built = False
         self._sampled = False
@@ -280,8 +283,8 @@ class Bayesian:
 
     def build_model(
         self,
-        mu_prior: Optional[Dict[str, float]] = None,
-        tau_prior: Optional[Dict[str, float]] = None,
+        mu_prior: dict[str, float] | None = None,
+        tau_prior: dict[str, float] | None = None,
     ) -> pm.Model:
 
         if mu_prior is None:
@@ -360,8 +363,8 @@ class Bayesian:
         cores: int = 2,
         target_accept: float = 0.90,
         random_seed: int = 42,
-        mu_prior: Optional[Dict[str, float]] = None,
-        tau_prior: Optional[Dict[str, float]] = None,
+        mu_prior: dict[str, float] | None = None,
+        tau_prior: dict[str, float] | None = None,
         **kwargs,
     ) -> az.InferenceData:
 
@@ -394,7 +397,7 @@ class Bayesian:
     def sample(
         self,
         n: int,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
     ) -> np.ndarray:
         """
         Sample from posterior predictive distribution.
@@ -443,7 +446,7 @@ class Bayesian:
     def sample_study_level(
         self,
         n: int,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
     ) -> np.ndarray:
 
         self._ensure_fitted()
@@ -475,7 +478,7 @@ class Bayesian:
 
     # Summary statistics
 
-    def get_distribution_stats(self) -> Dict[str, float]:
+    def get_distribution_stats(self) -> dict[str, float]:
 
         self._ensure_fitted()
 
@@ -509,7 +512,7 @@ class Bayesian:
 
     def summary(
         self,
-        var_names: Optional[list] = None,
+        var_names: list | None = None,
         hdi_prob: float = 0.95,
         **kwargs,
     ):
@@ -531,7 +534,7 @@ class Bayesian:
 
     # Diagnostics
 
-    def convergence_diagnostics(self) -> Dict[str, Any]:
+    def convergence_diagnostics(self) -> dict[str, Any]:
 
         self._ensure_fitted()
 

@@ -1,11 +1,12 @@
-from domain.inputs import ModelInput
-from typing import Dict
+
 import numpy as np
+
+from domain.inputs import ModelInput
 
 
 class ParameterResolver:
     @staticmethod
-    def resolve_samples(samples: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    def resolve_samples(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """
         Vectorized deterministic transformation layer
         Handles all dependencies safely.
@@ -41,7 +42,7 @@ class ParameterResolver:
         }
 
     @staticmethod
-    def build_single(res: Dict[str, np.ndarray], i: int) -> ModelInput:
+    def build_single(res: dict[str, np.ndarray], i: int) -> ModelInput:
         """
         Convert one PSA draw into model-ready structure
         """

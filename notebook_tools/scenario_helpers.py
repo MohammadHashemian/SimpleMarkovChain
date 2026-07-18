@@ -1,9 +1,9 @@
 from dataclasses import Field
-from analysis.distributions import Constant
-from analysis.psa.models import ParameterSet
 
 import numpy as np
 
+from analysis.distributions import Constant
+from analysis.psa.models import ParameterSet
 from analysis.psa.parameters import Parameter
 from domain.scenario import Scenario
 

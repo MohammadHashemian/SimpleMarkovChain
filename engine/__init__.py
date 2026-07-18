@@ -1,10 +1,10 @@
-from engine.chains import Chain, MarkovModel, MarkovChains
-from engine.interfaces import TransitionModifier, NoOpModifier
+from engine.chains import Chain, MarkovChains, MarkovModel
+from engine.interfaces import NoOpModifier, TransitionModifier
 from engine.results import MarkovResult
-from engine.runners import SimulationResult, Runner, ScenarioRunner
+from engine.runners import Runner, ScenarioRunner, SimulationResult
 from engine.transitions import (
-    HybridTransitionGenerator,
     CTMCTransitionGenerator,
+    HybridTransitionGenerator,
     IndependentHazardTransitionGenerator,
 )
 

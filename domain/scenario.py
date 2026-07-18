@@ -1,10 +1,12 @@
-from typing import Any, Dict, Generic, TypeVar, List
+import copy
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
+
 from pydantic import BaseModel, Field
+
 from analysis.psa.models import ParameterSet
 from analysis.psa.parameters import Parameter
 from domain.enums import Regime
-from dataclasses import dataclass
-import copy
 
 T = TypeVar("T")
 
@@ -14,7 +16,7 @@ class Scenario(BaseModel):
     regime: Regime
     description: str | None = None
 
-    overrides: Dict[str, Any] = Field(default_factory=dict)
+    overrides: dict[str, Any] = Field(default_factory=dict)
 
     def apply_overrides(self, base: ParameterSet) -> ParameterSet:
         """
@@ -44,4 +46,4 @@ class Scenario(BaseModel):
 @dataclass
 class ScenarioBundle(Generic[T]):
     scenario: Scenario
-    inputs: List[T]
+    inputs: list[T]

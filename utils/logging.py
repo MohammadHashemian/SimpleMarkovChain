@@ -1,13 +1,15 @@
-from logging.handlers import RotatingFileHandler
-from utils.path_utils import get_project_root
-from pathlib import Path
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from utils.path_utils import get_project_root
 
 
 class PrettyFormatter(logging.Formatter):
     def format(self, record):
-        base = f"[{self.formatTime(record, '%H:%M:%S')}] {record.levelname:<8} {record.getMessage()}"
+        ts = self.formatTime(record, "%H:%M:%S")
+        base = f"[{ts}] {record.levelname:<8} {record.getMessage()}"
 
         context = []
         for field in ("run_id", "scenario", "worker_id"):

@@ -1,6 +1,7 @@
-from sklearn.preprocessing import normalize
-import numpy as np
 import math
+
+import numpy as np
+from sklearn.preprocessing import normalize
 
 
 def normalize_to_sum_to_one(array: list[float] | np.ndarray) -> np.ndarray:

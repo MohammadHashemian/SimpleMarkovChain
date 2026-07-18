@@ -1,15 +1,16 @@
-import pandas as pd
-import numpy as np
 
-from typing import Optional
 from collections import Counter
+
+import numpy as np
+import pandas as pd
+
 from domain.enums import HealthStates
 from domain.inputs import ModelInput
 from domain.worker import ModelOutput
 from engine.runners import SimulationResult
+from notebook_tools.scenario_helpers import parse_scenario
 from persistence.context import ModelContext
 from utils.logging import setup_root_logger
-from notebook_tools.scenario_helpers import parse_scenario
 
 columns = [
     "scenario",
@@ -93,7 +94,7 @@ def calculate_state_occupation(seq, states: list["str"]) -> dict:
 def build_df(
     results: list["SimulationResult"],
     context: ModelContext,
-    options: Optional[dict] = {},
+    options: dict | None = {},
 ) -> pd.DataFrame:
     logger = setup_root_logger()
 
@@ -175,8 +176,6 @@ def build_df(
         spontaneous_bleeding_rate = spontaneous_bleeding_events / person_years
         annual_joint_bleeding_rate = joint_bleeding_events / person_years
         life_threatening_rate = life_threatening_events / person_years
-
-        seq_counter = Counter(seq)
 
         parts = parse_scenario(result.scenario)
         time_horizon, regime, sampling_method, extension = parts

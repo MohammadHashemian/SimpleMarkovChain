@@ -1,9 +1,10 @@
-from scipy.stats import poisson
-from numba import jit, float64, njit
-import statsmodels.api as sm
+import math
+
 import numpy as np
 import pandas as pd
-import math
+import statsmodels.api as sm
+from numba import jit, njit
+from scipy.stats import poisson
 
 
 def to_weekly(annual_value: float, weeks_per_year: int = 52) -> float:

@@ -1,7 +1,6 @@
-from analysis.distributions import Distribution
-
-
 import numpy as np
+
+from analysis.distributions import Distribution
 
 
 class Parameter:

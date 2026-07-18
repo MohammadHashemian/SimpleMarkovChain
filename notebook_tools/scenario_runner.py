@@ -1,11 +1,10 @@
-from dataclasses import dataclass
 import gc
-import logging
 import time
-import pandas as pd
-
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
+
+import pandas as pd
 
 from domain.inputs import ModelInput
 from domain.scenario import ScenarioBundle
@@ -121,7 +120,7 @@ def run_scenarios_in_batches(
             # convert to DataFrame using existing helper
             try:
                 batch_df = build_df(results=batch_results, context=context)
-            except Exception as e:
+            except Exception:
                 logger.exception(_Errors.FAILED_TO_BUILD_DF)
                 batch_df = pd.DataFrame()
 
@@ -178,14 +177,14 @@ def run_scenarios_in_batches(
     try:
         all_results_df.to_parquet(combined_path, index=False)
         logger.info(_Info.SAVED_COMBINED_RESULTS, combined_path)
-    except Exception as e:
+    except Exception:
         logger.exception(_Errors.FAILED_TO_SAVE_COMBINED_RESULTS, combined_path)
 
     # Step 3: Group and write per-pair parquet files
     saved_files = []
     try:
         all_pairs = pair_scenarios(all_results_df["scenario"].unique().tolist())
-    except Exception as e:
+    except Exception:
         logger.exception(_Errors.FAILED_TO_PAIR)
         raise
 
@@ -214,7 +213,7 @@ def run_scenarios_in_batches(
             combined.to_parquet(path, index=False)
             saved_files.append(path)
             logger.info(_Info.SAVED_PAIR_RESULTS, control, intervention, path)
-        except Exception as e:
+        except Exception:
             logger.exception(_Errors.FAILED_TO_SAVE_PAIR_RESULTS, path)
 
     # Step 4: Clean up temp files
@@ -222,7 +221,7 @@ def run_scenarios_in_batches(
         # shutil.rmtree(temp_dir)
         # logger.info("Cleaned up temp directory")
         logger.warning(_Errors.CLEAN_UP_DISABLED, temp_dir)
-    except Exception as e:
+    except Exception:
         logger.exception(_Errors.FAILED_TO_CLEAN_TEMP_DIRECTORY, temp_dir)
 
     logger.info(_Info.SAVED_FINAL_RESULTS, len(saved_files), output_dir)

@@ -1,5 +1,7 @@
-from pathlib import Path
 import pickle
+from pathlib import Path
+
+import numpy as np
 
 from analysis.distributions import (
     BetaFromMeanSD,
@@ -9,7 +11,6 @@ from analysis.distributions import (
 )
 from analysis.psa.models import ParameterSet
 from analysis.psa.parameters import Parameter
-import numpy as np
 
 
 class HemophiliaParamRepo:

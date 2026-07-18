@@ -1,11 +1,13 @@
-from typing import Any, List
+from typing import Any
+
+import numpy as np
+
+from domain.inputs import ModelInput
 from engine.interfaces import TransitionModifier
 from engine.transitions import HybridTransitionGenerator
-from domain.inputs import ModelInput
+from persistence.schemas.mortality import MortalityFile
 from utils.logging import setup_root_logger
 from utils.math import prob_at_least_one, to_weekly
-from persistence.schemas.mortality import MortalityFile
-import numpy as np
 
 
 class AgeBasedMortalityModifier(TransitionModifier):
@@ -40,7 +42,7 @@ class AgeBasedMortalityModifier(TransitionModifier):
         current_state: str,
         current_chain_name: str,
         step: int,
-        states: List[str],
+        states: list[str],
         **kwargs: Any,
     ) -> np.ndarray:
 
@@ -132,7 +134,7 @@ def _add_ltb_transitions(
 
 def build_transition_matrix(
     inputs: "ModelInput",
-    states: List[str],
+    states: list[str],
 ) -> np.ndarray:
 
     # Compute weekly survival probability for recovery

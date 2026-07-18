@@ -1,4 +1,4 @@
-from typing import List
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -14,4 +14,4 @@ class MarkovResult(BaseModel):
     initial_state: str
     final_state: str
     steps: int
-    path: List[str]
+    path: list[str]

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from IPython.display import display
 import pandas as pd
+from IPython.display import display
 
 from utils.logging import setup_root_logger
 

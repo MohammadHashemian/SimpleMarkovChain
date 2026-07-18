@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
+from notebook_tools.calibration import _safe_div, classify_calibration
 from notebook_tools.dataframe_builders import calculate_state_occupation
-from notebook_tools.calibration import classify_calibration, _safe_div
-from notebook_tools.scenario_helpers import parse_scenario, pair_scenarios
+from notebook_tools.scenario_helpers import pair_scenarios, parse_scenario
 
 
 class TestCalculateStateOccupation:

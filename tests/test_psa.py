@@ -2,19 +2,18 @@ import numpy as np
 import pytest
 
 from analysis.distributions import (
-    Constant,
-    GammaFromMeanSD,
-    GammaFromMeanCV,
     BetaFromMeanSD,
-    TriangularDist,
-    MixtureOfStudies,
+    Constant,
     DirichletMixture,
+    GammaFromMeanCV,
+    GammaFromMeanSD,
+    MixtureOfStudies,
+    TriangularDist,
 )
-from analysis.psa.parameters import Parameter
 from analysis.psa.models import ParameterSet
-from analysis.psa.sampler import PSASampler
 from analysis.psa.parameter_resolver import ParameterResolver
-
+from analysis.psa.parameters import Parameter
+from analysis.psa.sampler import PSASampler
 
 SEED = 42
 

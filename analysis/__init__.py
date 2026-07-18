@@ -1,13 +1,13 @@
 from analysis.distributions import (
-    Distribution,
-    Constant,
-    GammaFromMeanSD,
-    GammaFromMeanCV,
-    BetaFromMeanSD,
-    TriangularDist,
-    MixtureOfStudies,
-    DirichletMixture,
     Bayesian,
+    BetaFromMeanSD,
+    Constant,
+    DirichletMixture,
+    Distribution,
+    GammaFromMeanCV,
+    GammaFromMeanSD,
+    MixtureOfStudies,
+    TriangularDist,
 )
 
 __all__ = [

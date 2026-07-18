@@ -1,5 +1,6 @@
 # Pydantic
 from pydantic import BaseModel, ConfigDict
+
 from engine.results import MarkovResult  # Generic model output
 
 

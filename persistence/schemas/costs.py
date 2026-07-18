@@ -1,4 +1,4 @@
-from typing import List
+
 from pydantic import BaseModel
 
 
@@ -24,5 +24,5 @@ class CostItem(BaseModel):
 
 
 class CostFile(BaseModel):
-    currencies: List[Currency]
-    costs: List[CostItem]
+    currencies: list[Currency]
+    costs: list[CostItem]

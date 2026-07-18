@@ -1,11 +1,13 @@
-from ..data.loaders import load_population_pyramids, PROJECT_ROOT
-from ..utils.logger import suppress_matplotlib_font_manager_logger
-from ..processing.distribution_adjuster import adjust_population_pyramid
 from pathlib import Path
-import matplotlib.pyplot as plt
+
 import matplotlib.patches as mpatches
-from matplotlib.animation import FuncAnimation, PillowWriter
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FuncAnimation, PillowWriter
+
+from ..data.loaders import PROJECT_ROOT, load_population_pyramids
+from ..processing.distribution_adjuster import adjust_population_pyramid
+from ..utils.logger import suppress_matplotlib_font_manager_logger
 
 
 # TODO:

@@ -1,5 +1,6 @@
-from analysis.psa.models import ParameterSet
 import numpy as np
+
+from analysis.psa.models import ParameterSet
 
 
 class PSASampler:

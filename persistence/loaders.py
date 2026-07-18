@@ -1,12 +1,14 @@
-from pathlib import Path
-from typing import TypeVar, Any, Callable
-from persistence.schemas.costs import CostFile
-from persistence.schemas.utilities import UtilityFile
-from persistence.schemas.clinicals import ClinicalFile
-from persistence.schemas.simulation import SimulationFile
-from persistence.schemas.mortality import MortalityFile
-from persistence.schemas.economic_policy import EconomicPolicyFile
 import json
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar
+
+from persistence.schemas.clinicals import ClinicalFile
+from persistence.schemas.costs import CostFile
+from persistence.schemas.economic_policy import EconomicPolicyFile
+from persistence.schemas.mortality import MortalityFile
+from persistence.schemas.simulation import SimulationFile
+from persistence.schemas.utilities import UtilityFile
 
 T = TypeVar("T")
 

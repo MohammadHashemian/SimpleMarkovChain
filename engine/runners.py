@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import uuid
 import copy
-from multiprocessing import get_context
-from typing import Any, Callable, Generic, List, Literal, TypeVar
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from multiprocessing import get_context
+from typing import Any, Generic, Literal, TypeVar
 
 import enlighten
 
@@ -56,7 +57,7 @@ class Runner(Generic[T, U]):
         chain_instance: Any,
         context: Any,
         worker_func: Callable,
-        worker_inputs: List[T],
+        worker_inputs: list[T],
         scenario: Any,
         run_id: str | None = None,
     ):
@@ -70,7 +71,7 @@ class Runner(Generic[T, U]):
 
     def _run_with_pool(
         self, PoolClass, mode: Literal["std", "pathos"]
-    ) -> List[SimulationResult]:
+    ) -> list[SimulationResult]:
         n_inputs = len(self.worker_inputs)
 
         manager = enlighten.get_manager()
@@ -89,7 +90,7 @@ class Runner(Generic[T, U]):
             for i, inp in enumerate(self.worker_inputs)
         ]
 
-        results: List[SimulationResult] = []
+        results: list[SimulationResult] = []
 
         with PoolClass() as pool:
 
@@ -107,11 +108,11 @@ class Runner(Generic[T, U]):
         manager.stop()
         return results
 
-    def run_multiprocessing(self) -> List[SimulationResult]:
+    def run_multiprocessing(self) -> list[SimulationResult]:
         ctx = get_context("spawn")
         return self._run_with_pool(ctx.Pool, mode="std")
 
-    def run_pathos(self) -> List[SimulationResult]:
+    def run_pathos(self) -> list[SimulationResult]:
         from pathos.multiprocessing import ProcessingPool as Pool
 
         return self._run_with_pool(Pool, mode="pathos")
@@ -120,7 +121,7 @@ class Runner(Generic[T, U]):
 class ScenarioRunner(Generic[T, U]):
     def __init__(
         self,
-        scenario_bundles: List[Any],
+        scenario_bundles: list[Any],
         chain_instance: Any,
         context: Any,
         worker_func: Callable,
@@ -136,8 +137,8 @@ class ScenarioRunner(Generic[T, U]):
         self.run_id = run_id or uuid.uuid4().hex
         self.backend = backend
 
-    def run_all(self) -> List[SimulationResult[T, U]]:
-        all_results: List[SimulationResult[T, U]] = []
+    def run_all(self) -> list[SimulationResult[T, U]]:
+        all_results: list[SimulationResult[T, U]] = []
 
         for bundle in self.bundles:
             scenario = bundle.scenario

@@ -1,9 +1,9 @@
 from domain.rewards.hemophilia import (
-    event_count,
-    weight,
     consumption,
-    utility,
+    event_count,
     make_pettersson_score,
+    utility,
+    weight,
 )
 from domain.rewards.pettersson import pettersson_to_severity
 

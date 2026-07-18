@@ -1,6 +1,7 @@
-from typing import Callable, Any, Dict
-from functools import wraps
 import warnings
+from collections.abc import Callable
+from functools import wraps
+from typing import Any
 
 
 def deprecated(reason: str):
@@ -29,7 +30,7 @@ def with_context(**context_factories: Callable[[], Any]):
 
     def decorator(func: Callable):
         # Initialize context once (per decorated function instance)
-        context: Dict[str, Any] = {
+        context: dict[str, Any] = {
             name: factory() for name, factory in context_factories.items()
         }
 

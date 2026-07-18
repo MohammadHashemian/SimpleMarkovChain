@@ -1,37 +1,38 @@
-from typing import List, Dict, Tuple
 from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from model.utils import cal_body_weight, remove_outliers_robust
-from persistence.context import ModelConfig, DEFAULT_CONFIG
+
 from deprecated.src.utils.logger import get_logger
-import matplotlib.pyplot as plt
-import statsmodels.api as sm
-import numpy as np
-import pandas as pd
+from persistence.context import DEFAULT_CONFIG, ModelConfig
 
 logger = get_logger()
 
 
 @dataclass
 class DataExtract:
-    dataframes: Tuple[pd.DataFrame, pd.DataFrame]  # on_demand_df, prophylaxis_df
-    icer_pairs: List[Tuple[float, float, float]]  # (delta_cost, delta_qaly, delta_abr)
-    categorized: Tuple[
-        List[Tuple[float, Tuple[float, float, float]]],  # dominant
-        List[Tuple[float, Tuple[float, float, float]]],  # dominated
-        List[Tuple[float, Tuple[float, float, float]]],  # cost-effective
-        List[Tuple[float, Tuple[float, float, float]]],  # not cost-effective
-        List[float],  # icers
+    dataframes: tuple[pd.DataFrame, pd.DataFrame]  # on_demand_df, prophylaxis_df
+    icer_pairs: list[tuple[float, float, float]]  # (delta_cost, delta_qaly, delta_abr)
+    categorized: tuple[
+        list[tuple[float, tuple[float, float, float]]],  # dominant
+        list[tuple[float, tuple[float, float, float]]],  # dominated
+        list[tuple[float, tuple[float, float, float]]],  # cost-effective
+        list[tuple[float, tuple[float, float, float]]],  # not cost-effective
+        list[float],  # icers
     ]
 
 
 def extract(
-    on_demand_inputs: List[Dict],
-    prophylaxis_inputs: List[Dict],
-    on_demand_results: Dict,
-    prophylaxis_results: Dict,
+    on_demand_inputs: list[dict],
+    prophylaxis_inputs: list[dict],
+    on_demand_results: dict,
+    prophylaxis_results: dict,
     n_samples: int,
     config: ModelConfig | None = None,
     remove_outliers=False,
@@ -448,7 +449,7 @@ def plot_icer_scatter(data: DataExtract, config: ModelConfig | None = None) -> F
         f"Dominant: {len(dominant)}, Cost-effective: {len(cost_eff)}, Not cost-effective: {len(not_cost_eff)}, Dominated: {len(dominated)}"
     )
 
-    def min_max_median_icer(pairs: List[Tuple[float, Tuple[float, float, float]]]):
+    def min_max_median_icer(pairs: list[tuple[float, tuple[float, float, float]]]):
         # Pairs icer, (dc, dq, da)
         values = [i for i, _ in pairs if np.isfinite(i)]
         if not values:
@@ -456,7 +457,7 @@ def plot_icer_scatter(data: DataExtract, config: ModelConfig | None = None) -> F
         return (float(np.min(values)), float(np.max(values)), float(np.median(values)))
 
     def min_max_median_abr(
-        pairs: List[Tuple[float, Tuple[float, float, float]]],
+        pairs: list[tuple[float, tuple[float, float, float]]],
     ) -> tuple:
         values = [i[2] for _, i in pairs if np.isfinite(_)]
         if not values:
@@ -691,20 +692,20 @@ def plot_icer_histogram(data: DataExtract) -> Figure:
 
 
 def plot(
-    on_demand_inputs: List[Dict],
-    prophylaxis_inputs: List[Dict],
-    on_demand_results: Dict,
-    prophylaxis_results: Dict,
+    on_demand_inputs: list[dict],
+    prophylaxis_inputs: list[dict],
+    on_demand_results: dict,
+    prophylaxis_results: dict,
     n_samples: int,
     config: ModelConfig | None = None,
-) -> Dict[str, Figure]:
+) -> dict[str, Figure]:
     """
     Generate all plots and return a dictionary of figures.
     """
     if config is None:
         config = DEFAULT_CONFIG
 
-    figures: Dict[str, Figure] = {}
+    figures: dict[str, Figure] = {}
     data = extract(
         on_demand_inputs,
         prophylaxis_inputs,

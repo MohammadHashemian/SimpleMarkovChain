@@ -1,7 +1,10 @@
-from typing import Any, List, Callable, Optional
-from engine.interfaces import TransitionModifier
-import numpy as np
 import logging
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
+
+from engine.interfaces import TransitionModifier
 
 
 class HemophiliaMortalityModifier(TransitionModifier):
@@ -14,7 +17,7 @@ class HemophiliaMortalityModifier(TransitionModifier):
         mortality_func: Callable[[int], float],
         start_age: int = 1,
         dead_state: str = "dead",
-        adjust_only_states: Optional[list[str]] = None,
+        adjust_only_states: list[str] | None = None,
         original_rate_per_1000: float = 7.76,
         enable_logger: bool = False,
     ):
@@ -42,7 +45,7 @@ class HemophiliaMortalityModifier(TransitionModifier):
         current_state: str,  # must match
         current_chain_name: str,  # ← add this (even if unused)
         step: int,  # must match
-        states: List[str],  # must match
+        states: list[str],  # must match
         **kwargs: Any  # must match
     ) -> np.ndarray:
         """Runtime adjustment for age-specific background mortality."""

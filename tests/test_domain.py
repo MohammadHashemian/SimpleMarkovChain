@@ -1,17 +1,17 @@
 import numpy as np
 import pytest
 
-from domain.enums import Regime, HealthStates, ArthropathySeverity
-from domain.scenario import Scenario, ScenarioBundle
+from domain.enums import ArthropathySeverity, HealthStates, Regime
+from domain.modifiers import HemophiliaMortalityModifier
 from domain.rewards.hemophilia import (
-    event_count,
-    weight,
     consumption,
-    utility,
+    event_count,
     make_pettersson_score,
+    utility,
+    weight,
 )
 from domain.rewards.pettersson import pettersson_to_severity
-from domain.modifiers import HemophiliaMortalityModifier
+from domain.scenario import Scenario, ScenarioBundle
 from engine.interfaces import NoOpModifier
 
 

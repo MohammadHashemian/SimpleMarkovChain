@@ -1,15 +1,14 @@
+import numpy as np
+import pytest
+
+from domain.modifiers import HemophiliaMortalityModifier
 from engine.chains import (
     Chain,
     MarkovChains,
 )
-from engine.transitions import HybridTransitionGenerator
-from engine.results import MarkovResult
-from domain.modifiers import HemophiliaMortalityModifier
-import numpy as np
-import pytest
-
 from engine.interfaces import NoOpModifier
-
+from engine.results import MarkovResult
+from engine.transitions import HybridTransitionGenerator
 
 # Fixtures
 

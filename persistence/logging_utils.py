@@ -1,6 +1,7 @@
-from contextlib import contextmanager
-from IPython.utils.capture import capture_output
 import logging
+from contextlib import contextmanager
+
+from IPython.utils.capture import capture_output
 
 
 @contextmanager

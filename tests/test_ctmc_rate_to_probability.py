@@ -1,5 +1,6 @@
-from engine.transitions import HybridTransitionGenerator
 import numpy as np
+
+from engine.transitions import HybridTransitionGenerator
 
 
 def assert_row_stochastic(P, tol=1e-10):
@@ -44,7 +45,6 @@ def test_ctmc_rate_to_probability_valid_structure():
 
     p_bleeding = row[tg.state_indices["bleeding"]]
     p_joint = row[tg.state_indices["joint_bleeding"]]
-    p_death = row[tg.state_indices["death"]]
     p_stay = row[i]
 
     assert p_joint > 0

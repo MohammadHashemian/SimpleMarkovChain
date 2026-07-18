@@ -1,7 +1,7 @@
-from typing import Literal
-from deprecated.src.utils.logger import get_logger
 import math
+from typing import Literal
 
+from deprecated.src.utils.logger import get_logger
 
 logger = get_logger()
 

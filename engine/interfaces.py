@@ -1,7 +1,6 @@
+from typing import Any, Protocol
+
 import numpy as np
-
-
-from typing import Any, List, Protocol
 
 
 class TransitionModifier(Protocol):
@@ -13,7 +12,7 @@ class TransitionModifier(Protocol):
         current_state: str,
         current_chain_name: str,
         step: int,
-        states: List[str],
+        states: list[str],
         **kwargs: Any,
     ) -> np.ndarray:
         """Return adjusted probabilities (must still sum to ~1.0)."""
@@ -29,7 +28,7 @@ class NoOpModifier:
         current_state: str,
         current_chain_name: str,
         step: int,
-        states: List[str],
+        states: list[str],
         **kwargs: Any,
     ) -> np.ndarray:
         return base_probs.copy()

@@ -1,7 +1,8 @@
-from utils.math import cal_body_weight
-from utils.path_utils import get_project_root
 import matplotlib.pyplot as plt
 import numpy as np
+
+from utils.math import cal_body_weight
+from utils.path_utils import get_project_root
 
 
 def plot_body_weight():

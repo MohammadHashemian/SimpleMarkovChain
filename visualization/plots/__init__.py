@@ -1,8 +1,10 @@
+from collections.abc import Callable, Iterable
 from functools import wraps
-from typing import Callable, Iterable, Any
+from typing import Any
+
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from visualization.plots.body_weight import plot_body_weight
 
@@ -141,9 +143,9 @@ class OWSAPlotter:
 
             fig, ax = plt.subplots(figsize=(10, max(4, len(labels) * 0.35)))
 
-            mid_points = [(l + h) / 2 for l, h in zip(low_vals, high_vals)]
+            mid_points = [(lo + hi) / 2 for lo, hi in zip(low_vals, high_vals)]
 
-            lower_errors = [abs(m - l) for m, l in zip(mid_points, low_vals)]
+            lower_errors = [abs(m - lo) for m, lo in zip(mid_points, low_vals)]
 
             upper_errors = [abs(h - m) for h, m in zip(high_vals, mid_points)]
 

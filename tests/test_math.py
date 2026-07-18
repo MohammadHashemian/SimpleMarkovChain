@@ -2,13 +2,13 @@ import numpy as np
 import pytest
 
 from utils.math import (
-    cal_body_weight,
-    prob_at_least_one,
-    expm_prob,
-    to_weekly,
-    factorial_numba,
     build_zero_truncated_poisson_probs,
+    cal_body_weight,
+    expm_prob,
+    factorial_numba,
     poisson_mass_function,
+    prob_at_least_one,
+    to_weekly,
     zero_truncated_mass_function,
 )
 

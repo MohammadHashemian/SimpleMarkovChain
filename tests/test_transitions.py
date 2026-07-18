@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from engine.transitions import (
-    HybridTransitionGenerator,
     CTMCTransitionGenerator,
+    HybridTransitionGenerator,
     IndependentHazardTransitionGenerator,
 )
 

@@ -1,26 +1,22 @@
-from typing import (
-    List,
-    Generator,
-    Optional,
-    Callable,
-    Dict,
-    Any,
-    Set,
-    TypeVar,
-    Protocol,
-)
-from dataclasses import asdict
 from collections import OrderedDict
-from engine.interfaces import TransitionModifier
-from engine.interfaces import NoOpModifier
+from collections.abc import Callable, Generator
+from dataclasses import asdict
+from typing import (
+    Any,
+    Protocol,
+    TypeVar,
+)
+
 import numpy as np
+
+from engine.interfaces import NoOpModifier, TransitionModifier
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 
 class Chain:
-    def __init__(self, name: str, states: List[str], matrix: np.ndarray) -> None:
+    def __init__(self, name: str, states: list[str], matrix: np.ndarray) -> None:
         self.name = name
         self.states = states
         self.matrix = matrix
@@ -33,8 +29,8 @@ class Chain:
 
 
 class MarkovModel(Protocol):
-    def run(self) -> List[str]: ...
-    def collect_rewards(self) -> Dict[str, List[float | int]]: ...
+    def run(self) -> list[str]: ...
+    def collect_rewards(self) -> dict[str, list[float | int]]: ...
     def add_reward_function(self, func: Callable) -> None: ...
     def add_store_function(self, arg_name: str, func: Callable) -> None: ...
 
@@ -57,19 +53,20 @@ class MarkovChains:
         conditions: Dictionary containing target chain name and the switch condition function
         worker_kwargs: Keyword arguments which will be passed to reward and switch functions on call
         transition_modifier: Optional modifier applied to transition probabilities each step
-        absorbing_states: Set of absorbing states. If None, auto-detects states with probability 1 to stay.
+        absorbing_states: Set of absorbing states. If None, auto-detects
+            states with probability 1 to stay.
     """
 
     def __init__(
         self,
-        chains: List["Chain"],
+        chains: list["Chain"],
         entrance: str,
         entrance_chain: str,
         steps: int,
-        conditions: Optional[Dict[str, Callable]] = None,
-        worker_kwargs: Optional[Dict[str, Any]] = None,
-        transition_modifier: Optional[TransitionModifier] = None,
-        absorbing_states: Optional[Set[str]] = None,
+        conditions: dict[str, Callable] | None = None,
+        worker_kwargs: dict[str, Any] | None = None,
+        transition_modifier: TransitionModifier | None = None,
+        absorbing_states: set[str] | None = None,
     ) -> None:
         self.steps = steps
         self.chains = chains
@@ -81,17 +78,17 @@ class MarkovChains:
         self.absorbing_states = set(absorbing_states) if absorbing_states else set()
         self._auto_detect_absorbing = absorbing_states is None
 
-        self._reward_functions: List[Callable] = []
-        self._rewards: Dict[str, List[float | int]] = {}
-        self._store: Dict[str, Callable] = OrderedDict()
+        self._reward_functions: list[Callable] = []
+        self._rewards: dict[str, list[float | int]] = {}
+        self._store: dict[str, Callable] = OrderedDict()
 
         self.entrance = entrance
         self._current_chain_name = entrance_chain
         self.current_state_idx = self._chains_map[entrance_chain].states.index(entrance)
 
         # Metadata
-        self.absorbed_at: Optional[int] = None
-        self.absorbed_state: Optional[str] = None
+        self.absorbed_at: int | None = None
+        self.absorbed_state: str | None = None
 
         # Validation
         if entrance_chain not in self._chains_map:
@@ -192,7 +189,7 @@ class MarkovChains:
         """Returns the active chain for states and transition extractions"""
         return self._chains_map[self._current_chain_name]
 
-    def walk(self, steps: Optional[int] = None) -> Generator[str, None, None]:
+    def walk(self, steps: int | None = None) -> Generator[str, None, None]:
         steps = steps if steps is not None else self.steps
         current_state_idx = self.current_state_idx
         current_chain = self._get_current_chain()
@@ -261,11 +258,11 @@ class MarkovChains:
 
         self.current_state_idx = current_state_idx
 
-    def run(self) -> List[str]:
+    def run(self) -> list[str]:
         """Run the Markov chain and return the complete sequence of states."""
         return list(self.walk())
 
-    def collect_rewards(self) -> Dict[str, List[float | int]]:
+    def collect_rewards(self) -> dict[str, list[float | int]]:
         """Return all collected rewards for each reward function."""
         return self._rewards
 

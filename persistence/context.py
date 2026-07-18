@@ -1,20 +1,21 @@
 from dataclasses import dataclass
 from typing import ClassVar
-from persistence.schemas.simulation import SimulationFile
-from persistence.schemas.clinicals import ClinicalFile
-from persistence.schemas.costs import CostFile
-from persistence.schemas.utilities import UtilityFile
-from persistence.schemas.mortality import MortalityFile
-from persistence.schemas.economic_policy import EconomicPolicyFile
+
 from persistence.loaders import (
     load_typed_json,
-    parse_simulation,
     parse_clinical,
     parse_cost_file,
-    parse_mortality,
-    parse_utilities,
     parse_economic_policy,
+    parse_mortality,
+    parse_simulation,
+    parse_utilities,
 )
+from persistence.schemas.clinicals import ClinicalFile
+from persistence.schemas.costs import CostFile
+from persistence.schemas.economic_policy import EconomicPolicyFile
+from persistence.schemas.mortality import MortalityFile
+from persistence.schemas.simulation import SimulationFile
+from persistence.schemas.utilities import UtilityFile
 from utils.path_utils import get_project_root
 
 
@@ -96,7 +97,7 @@ class ModelContext:
 # (4.8, 5.0),  # Roberto Musso (23.6 y, n=220) 10.1160/TH07-06-0409
 # (4.3, 6.5),  # K. Kavakli (12-65 mean 28y) 10.1111/jth.12828
 # (8.9, 19.61),  # Fukutake (352 PTPs, 75.6% severe, 1-76 mean 25.8 y) 10.1007/s12185-018-02574-x
-# (3.5, 2.1),  # Beth Boulden Warren (n:37, 2.5 up to 18y) - Early proph group 10.1182/bloodadvances.2019001311
+# (3.5, 2.1),  # Beth Boulden Warren (n:37, 2.5 up to 18y) - Early proph group  # noqa: E501
 # (6.2, 5.3),  # Beth Boulden Warren - Post-proph group 10.1182/bloodadvances.2019001311
 # (3.27, 6.24),  # Marilyn J. Manco-Johnson (<1.5y to 6y, n:65) 10.1056/NEJMoa067659
 # (4.2, 3.7),  # A. Tagliaferri (n: 83, median 23.6, 10-72y) 10.1111/j.1365-2516.2008.01791.x

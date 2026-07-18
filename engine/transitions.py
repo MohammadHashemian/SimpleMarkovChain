@@ -1,8 +1,12 @@
 from __future__ import annotations
-from typing import Dict, List, Literal, Mapping, Tuple, Optional, Union
-from utils.math import prob_at_least_one
-from scipy.linalg import expm
+
+from collections.abc import Mapping
+from typing import Literal
+
 import numpy as np
+from scipy.linalg import expm
+
+from utils.math import prob_at_least_one
 
 
 class HybridTransitionGenerator:
@@ -20,12 +24,12 @@ class HybridTransitionGenerator:
 
     def __init__(
         self,
-        states: List[str],
-        transition_pairs: Dict[
-            Tuple[str, str],
-            Tuple[Union[float, str], Optional[Literal["weekly", "annual"]]],
+        states: list[str],
+        transition_pairs: dict[
+            tuple[str, str],
+            tuple[float | str, Literal["weekly", "annual"] | None],
         ],
-        special_transitions: Optional[Dict[str, List[float]]] = None,
+        special_transitions: dict[str, list[float]] | None = None,
         time_step: Literal["weekly", "annual"] = "weekly",
     ) -> None:
         """
@@ -75,8 +79,9 @@ class HybridTransitionGenerator:
             if state not in self.states:
                 raise ValueError(f"Special transition state '{state}' not in states.")
             if len(probs) != len(self.states):
+                n = len(self.states)
                 raise ValueError(
-                    f"Special transition for '{state}' must contain {len(self.states)} probabilities."
+                    f"Special transition for '{state}' must contain {n} probabilities."
                 )
             if not np.allclose(sum(probs), 1.0, rtol=1e-5):
                 raise ValueError(
@@ -86,8 +91,8 @@ class HybridTransitionGenerator:
 
     def get_probability(
         self,
-        value: Union[float, int, str],
-        period: Optional[Literal["weekly", "annual"]],
+        value: float | int | str,
+        period: Literal["weekly", "annual"] | None,
     ) -> float:
         """Convert rate to probability or return direct probability."""
         if period is None:
@@ -107,7 +112,7 @@ class HybridTransitionGenerator:
 
         return prob_at_least_one(lam_ts)
 
-    def build(self) -> List[List[float]]:
+    def build(self) -> list[list[float]]:
         """
         Construct the transition probability matrix.
 
@@ -117,7 +122,7 @@ class HybridTransitionGenerator:
             Square transition matrix (rows sum to 1).
         """
         n = len(self.states)
-        matrix: List[List[float]] = [[0.0] * n for _ in range(n)]
+        matrix: list[list[float]] = [[0.0] * n for _ in range(n)]
 
         # 1. Insert special transitions
         for state, probs in self.special_transitions.items():
@@ -148,8 +153,8 @@ class HybridTransitionGenerator:
                 continue
 
             # Split into direct probs and rates
-            direct_probs: Dict[str, float] = {}
-            rate_transitions: Dict[str, Tuple[Union[float, str], str]] = {}
+            direct_probs: dict[str, float] = {}
+            rate_transitions: dict[str, tuple[float | str, str]] = {}
 
             for to_state, (value, period) in transitions.items():
                 if period is None:
@@ -171,7 +176,7 @@ class HybridTransitionGenerator:
 
             # Apply competing risks (rates)
             if rate_transitions and remaining > 0:
-                lam_dict: Dict[str, float] = {}
+                lam_dict: dict[str, float] = {}
                 for to_state, (value, period) in rate_transitions.items():
                     rate = float(value)
                     lam = (
@@ -246,11 +251,11 @@ class CTMCTransitionGenerator:
 
     def __init__(
         self,
-        states: List[str],
+        states: list[str],
         transition_pairs: Mapping[
-            Tuple[str, str], float
+            tuple[str, str], float
         ],  # All inputs are HAZARDS (rates)
-        special_transitions: Optional[Dict[str, Dict[str, float]]] = None,
+        special_transitions: dict[str, dict[str, float]] | None = None,
         time_step: Literal["weekly", "annual"] = "weekly",
     ) -> None:
         """
@@ -334,7 +339,7 @@ class CTMCTransitionGenerator:
 
         return Q
 
-    def build(self) -> List[List[float]]:
+    def build(self) -> list[list[float]]:
         """
         Compute discrete transition matrix P(Δt) = exp(Q Δt).
 
@@ -392,9 +397,9 @@ class IndependentHazardTransitionGenerator:
 
     def __init__(
         self,
-        states: List[str],
-        transition_pairs: Mapping[Tuple[str, str], float],  # Hazards only
-        special_transitions: Optional[Dict[str, Dict[str, float]]] = None,
+        states: list[str],
+        transition_pairs: Mapping[tuple[str, str], float],  # Hazards only
+        special_transitions: dict[str, dict[str, float]] | None = None,
         time_step: Literal["weekly", "annual"] = "weekly",
     ) -> None:
         """
@@ -426,7 +431,7 @@ class IndependentHazardTransitionGenerator:
             for (src, dst), rate in transition_pairs.items()
         }
 
-        self.special_transitions: Dict[str, Dict[str, float]] = {
+        self.special_transitions: dict[str, dict[str, float]] = {
             state.upper(): {target.upper(): float(p) for target, p in row.items()}
             for state, row in (special_transitions or {}).items()
         }
@@ -456,7 +461,7 @@ class IndependentHazardTransitionGenerator:
         """Convert hazard rate to transition probability over Δt."""
         return 1.0 - np.exp(-lam * self.delta_t)
 
-    def build(self) -> List[List[float]]:
+    def build(self) -> list[list[float]]:
         """
         Build the transition probability matrix.
 
@@ -522,4 +527,7 @@ class IndependentHazardTransitionGenerator:
         return np.array(self.build(), dtype=np.float64)
 
     def __repr__(self) -> str:
-        return f"IndependentHazardTransitionGenerator(n_states={len(self.states)}, time_step={self.time_step})"
+        return (
+            f"IndependentHazardTransitionGenerator("
+            f"n_states={len(self.states)}, time_step={self.time_step})"
+        )

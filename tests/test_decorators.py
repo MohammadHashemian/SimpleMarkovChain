@@ -1,5 +1,6 @@
-from utils.decorators import deprecated
 import pytest
+
+from utils.decorators import deprecated
 
 
 def test_deprecated_decorator_emits_warning():

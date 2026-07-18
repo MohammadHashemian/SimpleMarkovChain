@@ -1,8 +1,9 @@
-from matplotlib import pyplot as plt
-from utils.decorators import deprecated
-from utils.path_utils import get_project_root
 import numpy as np
 import seaborn as sns
+from matplotlib import pyplot as plt
+
+from utils.decorators import deprecated
+from utils.path_utils import get_project_root
 
 PROJECT_ROOT = get_project_root()
 

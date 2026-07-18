@@ -1,8 +1,11 @@
-import numpy as np
+from collections.abc import Callable
+from typing import Any
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 from analysis.psa.models import ParameterSet
 from domain.scenario import Scenario  # NOTE: NOT A GENERIC INTERFACE
-from typing import Callable, Any
 
 
 def plot_trajectories(

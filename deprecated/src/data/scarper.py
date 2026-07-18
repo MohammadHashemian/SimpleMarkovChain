@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
-import csv
 import asyncio
+import csv
+from dataclasses import dataclass
 
+from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
 IRC_URL = "https://irc.fda.gov.ir/nfi/"
 

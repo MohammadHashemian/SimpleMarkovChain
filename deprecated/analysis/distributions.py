@@ -1,7 +1,9 @@
-from typing import Dict, Optional, Sequence
-from pydantic import BaseModel
-from persistence.schemas.clinicals import StudyEstimate
+from collections.abc import Sequence
+
 import numpy as np
+from pydantic import BaseModel
+
+from persistence.schemas.clinicals import StudyEstimate
 
 
 class BayesianHierarchicalDistribution:

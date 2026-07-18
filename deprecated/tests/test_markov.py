@@ -1,10 +1,10 @@
-import numpy as np
-import pytest
 import logging
 import sys
 
-from engine.runners import Runner
+import numpy as np
+import pytest
 
+from engine.runners import Runner
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("__pytest__")
@@ -18,9 +18,8 @@ def get_linear_abrs():
 
 @pytest.fixture()
 def hemophilia_markov_chain():
-    from model.markov_chain import Chain
-    from model.markov_chain import HemophiliaMarkovChains
-    from model.markov_chain import TransitionGenerator
+    from model.markov_chain import Chain, HemophiliaMarkovChains, TransitionGenerator
+
     from persistence.context import DEFAULT_CONFIG
 
     chains = []
@@ -94,7 +93,8 @@ def hemophilia_markov_chain():
 
 # Assume states: [Healthy -Transitioning into---> [Bleeding, Hemarthrosis, LT_Bleeding, Death]]
 def test_probability(get_linear_abrs):
-    from model.utils import prob_at_least_one, poisson_mass_function
+    from model.utils import poisson_mass_function, prob_at_least_one
+
     from persistence.context import DEFAULT_CONFIG
 
     AJBR_FRACTION = DEFAULT_CONFIG.clinical.ajbr_fraction
@@ -203,7 +203,7 @@ def test_hemophilia_markov_chain_mortality_adjuster(hemophilia_markov_chain):
     ), "Number of states should match matrix dimension"
 
     assert matrix is not None
-    logger.info("Transition Matrix prior to runtime adjustment: \n {}".format(matrix))
+    logger.info(f"Transition Matrix prior to runtime adjustment: \n {matrix}")
 
     steps_arr = hemophilia_markov_chain.run()
     if "Death" not in steps_arr:
@@ -222,9 +222,10 @@ def test_hemophilia_markov_chain_mortality_adjuster(hemophilia_markov_chain):
 
 
 def test_worker_function_execution(hemophilia_markov_chain):
-    from persistence.context import DEFAULT_CONFIG
-    from domain.worker import worker_function
     from model.scenarios.scenario import Scenario
+
+    from domain.worker import worker_function
+    from persistence.context import DEFAULT_CONFIG
 
     TEST_SCENARIO = Scenario(
         title="Test Scenario", n_cycles=10, discounting=False, start_age=2
@@ -244,9 +245,9 @@ def test_worker_function_execution(hemophilia_markov_chain):
 
 def test_parallelized_markov_chain_execution(hemophilia_markov_chain):
     from domain.worker import worker_function
-    from persistence.schemas.clinicals import HemophiliaInput
     from engine.runners import Runner
     from persistence.context import DEFAULT_CONFIG
+    from persistence.schemas.clinicals import HemophiliaInput
 
     simulation_name = "Test Parallelized Markov Chain Execution"
     worker_inputs = [
@@ -279,8 +280,9 @@ def test_parallelized_markov_chain_execution(hemophilia_markov_chain):
 
 def test_scenario_analysis(hemophilia_markov_chain):
     from model.scenarios.scenario import Scenario
-    from persistence.context import DEFAULT_CONFIG
+
     from domain.worker import worker_function
+    from persistence.context import DEFAULT_CONFIG
     from persistence.schemas.clinicals import HemophiliaInput
 
     simulation_name = "Test Scenario Analysis"

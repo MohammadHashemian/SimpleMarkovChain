@@ -1,22 +1,23 @@
 from dataclasses import dataclass
-from domain.transitions import AgeBasedMortalityModifier, build_transition_matrix
-from persistence.schemas.utilities import StateUtilities
+
+import numpy as np
+
+from domain.enums import Regime
+from domain.inputs import ModelInput
 
 # from visualization.visualization import visualize_matrix
 from domain.rewards.hemophilia import (
-    make_pettersson_score,
-    event_count,
-    weight,
     consumption,
+    event_count,
+    make_pettersson_score,
     utility,
+    weight,
 )
-from domain.enums import Regime
-from domain.inputs import ModelInput
 from domain.scenario import Scenario
+from domain.transitions import AgeBasedMortalityModifier, build_transition_matrix
 from engine.chains import Chain, MarkovChains
-import numpy as np
-
 from persistence.context import ModelContext
+from persistence.schemas.utilities import StateUtilities
 
 
 def setup_rewards(

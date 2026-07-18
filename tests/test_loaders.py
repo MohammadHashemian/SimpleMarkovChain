@@ -7,9 +7,9 @@ logger = logging.getLogger("__pytest__")
 
 
 def test_costs_data():
-    from utils.path_utils import get_project_root
     from persistence.loaders import load_typed_json, parse_cost_file
     from persistence.schemas.costs import CostFile
+    from utils.path_utils import get_project_root
 
     file_path = get_project_root() / "data" / "economic.json"
 
@@ -30,9 +30,9 @@ def test_costs_data():
 
 
 def test_clinical_data():
-    from utils.path_utils import get_project_root
     from persistence.loaders import load_typed_json, parse_clinical
     from persistence.schemas.clinicals import ClinicalFile
+    from utils.path_utils import get_project_root
 
     file_path = get_project_root() / "data" / "clinical.json"
 
@@ -43,9 +43,9 @@ def test_clinical_data():
 
 
 def test_utilities_data():
-    from utils.path_utils import get_project_root
     from persistence.loaders import load_typed_json, parse_utilities
     from persistence.schemas.utilities import UtilityFile
+    from utils.path_utils import get_project_root
 
     file_path = get_project_root() / "data" / "utilities.json"
 
@@ -56,9 +56,9 @@ def test_utilities_data():
 
 
 def test_simulation_data():
-    from utils.path_utils import get_project_root
     from persistence.loaders import load_typed_json, parse_simulation
     from persistence.schemas.simulation import SimulationFile
+    from utils.path_utils import get_project_root
 
     file_path = get_project_root() / "data" / "simulation.json"
 
@@ -69,9 +69,9 @@ def test_simulation_data():
 
 
 def test_mortality_data():
-    from utils.path_utils import get_project_root
     from persistence.loaders import load_typed_json, parse_mortality
     from persistence.schemas.mortality import MortalityFile
+    from utils.path_utils import get_project_root
 
     file_path = get_project_root() / "data" / "mortality.json"
 
