@@ -1,0 +1,448 @@
+{
+  "epidemiology": {
+    "event_fractions": {
+      "ajbr_fraction": 0.75,
+      "ltb_fraction": 0.045
+    },
+    "event_rates": {
+      "ltb_rate": {
+        "on_demand": 0.00255,
+        "prophylaxis": 0.00166
+      }
+    }
+  },
+
+  "utilities": {
+    "decrements": {
+      "on_demand": 0.0003725,
+      "prophylaxis": 0.0018
+    }
+  },
+
+  "clinical_scoring": {
+    "pettersson_score": {
+      "conversion_factor": 12.6,
+      "thresholds": {
+        "mild": 4,
+        "moderate": 27,
+        "max": 79
+      }
+    }
+  },
+
+  "treatment": {
+    "dosing": {
+      "ir_prophylaxis_weekly_dose_ui": 50,
+      "standard_prophylaxis_weekly_dose_ui": 75,
+      "bleeding_dose_ui": 120,
+      "joint_bleeding_dose_ui": 60,
+      "lt_bleeding_dose_ui": 550
+    }
+  },
+
+  "evidence": {
+    "abr": {
+      "on_demand": [
+        {
+          "mean": 58.3,
+          "sd": 26.9,
+          "source": "Zhao et al.",
+          "size": "61",
+          "doi": "10.1177/1076029621989811"
+        },
+        {
+          "mean": 37.2,
+          "sd": 19.9,
+          "source": "Manco-Johnson MJ et al.",
+          "size": "84",
+          "doi": "10.1111/jth.13811"
+        },
+        {
+          "mean": 19.5,
+          "sd": 15.0,
+          "source": "Tagliaferri A et al. (12-25y)",
+          "size": "11",
+          "doi": "10.1160/TH14-05-0407"
+        },
+        {
+          "mean": 17.7,
+          "sd": 11.7,
+          "source": "Tagliaferri A et al. (26-55y)",
+          "size": "15",
+          "doi": "10.1160/TH14-05-0407"
+        },
+        {
+          "mean": 7.4,
+          "sd": 9.5,
+          "source": "Romanová G et al.",
+          "size": "74",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 16.8,
+          "sd": 10.0,
+          "source": "Belgium",
+          "size": "12",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 13.8,
+          "sd": 12.6,
+          "source": "France",
+          "size": "46",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 12.2,
+          "sd": 18.1,
+          "source": "Germany",
+          "size": "13",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 11.5,
+          "sd": 11.5,
+          "source": "Italy",
+          "size": "94",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 7.0,
+          "sd": 6.4,
+          "source": "Spain",
+          "size": "8",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 4.5,
+          "sd": 0.7,
+          "source": "Sweden",
+          "size": "10",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 19.4,
+          "sd": 10.6,
+          "source": "UK",
+          "size": "34",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 14.0,
+          "sd": 12.3,
+          "source": "Khair K et al. Year 1",
+          "size": "58",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 18.4,
+          "sd": 14.3,
+          "source": "Khair K et al. Year 2",
+          "size": "35",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 15.8,
+          "sd": 8.13,
+          "source": "Khair K et al. Year 3",
+          "size": "26",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 58.9,
+          "sd": 16.6,
+          "source": "Zhao et al. (2–12y)",
+          "size": "30",
+          "doi": "10.1080/08880018.2017.1313921",
+          "description": "prophylaxis followed by on-demand"
+        },
+        {
+          "mean": 5.6,
+          "sd": 1.83,
+          "source": "Eshghi et al.",
+          "size": "25",
+          "doi": "10.1177/1076029616685429"
+        },
+        {
+          "mean": 13.9,
+          "sd": 4.47,
+          "source": "Roberto Musso",
+          "size": "132",
+          "doi": "10.1160/TH07-06-0409"
+        },
+        {
+          "mean": 57.7,
+          "sd": 24.6,
+          "source": "K. Kavakli",
+          "size": "21",
+          "doi": "10.1111/jth.12828",
+          "description": "risk of bias"
+        },
+        {
+          "mean": 37.9,
+          "sd": 33.08,
+          "source": "Fukutake",
+          "size": "65",
+          "doi": "10.1007/s12185-018-02574-x",
+          "description": "huge difference between regular prophylaxis and on-demand to regular prophylaxis"
+        },
+        {
+          "mean": 22.2,
+          "sd": 7.0,
+          "source": "Ying Liu",
+          "size": "34",
+          "doi": "10.1111/hae.14016"
+        },
+        {
+          "mean": 17.7,
+          "sd": 9.3,
+          "source": "B Warren",
+          "size": "18",
+          "doi": "10.1182/bloodadvances.2019001311"
+        },
+        {
+          "mean": 17.69,
+          "sd": 9.25,
+          "source": "Manco-Johnson NEJM",
+          "size": "33",
+          "doi": "10.1056/NEJMoa067659"
+        },
+        {
+          "mean": 13.0,
+          "sd": 9.0,
+          "source": "Melissa Kern (pre-target joint)",
+          "size": "14",
+          "doi": "10.1016/j.jpeds.2004.06.082"
+        },
+        {
+          "mean": 24.0,
+          "sd": 12.0,
+          "source": "Melissa Kern (post-target joint)",
+          "size": "14",
+          "doi": "10.1016/j.jpeds.2004.06.082"
+        },
+        {
+          "mean": 35.8,
+          "sd": 24.8,
+          "source": "A. Tagliaferri extended",
+          "size": "84",
+          "doi": "10.1111/j.1365-2516.2008.01791.x"
+        },
+        {
+          "mean": 21.42,
+          "sd": 9.59,
+          "source": "Aznar",
+          "size": "15",
+          "doi": "10.1111/vox.12066"
+        },
+        {
+          "mean": 21.42,
+          "sd": 7.41,
+          "source": "von Drygalski",
+          "size": "26",
+          "doi": "10.1056/NEJMoa2209226",
+          "description": "pre-study on-demand treatment"
+        }
+      ],
+
+      "prophylaxis": [
+        {
+          "mean": 2.5,
+          "sd": 4.6,
+          "source": "Zhao et al.",
+          "size": "61",
+          "doi": "10.1177/1076029621989811"
+        },
+        {
+          "mean": 2.5,
+          "sd": 4.7,
+          "source": "Manco-Johnson MJ et al.",
+          "size": "84",
+          "doi": "10.1111/jth.13811"
+        },
+        {
+          "mean": 2.6,
+          "sd": 2.2,
+          "source": "Tagliaferri A et al. (12-25y)",
+          "size": "14",
+          "doi": "10.1160/TH14-05-0407"
+        },
+        {
+          "mean": 4.5,
+          "sd": 7.1,
+          "source": "Tagliaferri A et al. (26-55y)",
+          "size": "13",
+          "doi": "10.1160/TH14-05-0407"
+        },
+        {
+          "mean": 2.1,
+          "sd": 2.1,
+          "source": "Romanová G et al.",
+          "size": "63",
+          "doi": "10.1007/s00277-023-05453-6",
+          "description": "outcomes according to the therapeutic regimen"
+        },
+        {
+          "mean": 3.4,
+          "sd": 5.8,
+          "source": "Romanová G et al. (OD + PX)",
+          "size": "106",
+          "doi": "10.1007/s00277-023-05453-6",
+          "description": "on-demand patients followed by prophylaxis treatment"
+        },
+        {
+          "mean": 4.1,
+          "sd": 6.9,
+          "source": "Belgium",
+          "size": "24",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 8.0,
+          "sd": 9.4,
+          "source": "France",
+          "size": "35",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 4.5,
+          "sd": 5.3,
+          "source": "Germany",
+          "size": "106",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 2.8,
+          "sd": 4.7,
+          "source": "Italy",
+          "size": "93",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 2.7,
+          "sd": 2.5,
+          "source": "Spain",
+          "size": "20",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 1.9,
+          "sd": 2.9,
+          "source": "Sweden",
+          "size": "94",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 5.8,
+          "sd": 7.0,
+          "source": "UK",
+          "size": "188",
+          "doi": "10.1007/s00277-023-05453-6"
+        },
+        {
+          "mean": 3.5,
+          "sd": 4.3,
+          "source": "Khair K et al. Year 1",
+          "size": "272",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 3.3,
+          "sd": 4.1,
+          "source": "Khair K et al. Year 2",
+          "size": "201",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 3.7,
+          "sd": 3.9,
+          "source": "Khair K et al. Year 3",
+          "size": "108",
+          "doi": "10.1111/hae.13361"
+        },
+        {
+          "mean": 3.0,
+          "sd": 5.9,
+          "source": "Zhao et al. (2–12y)",
+          "size": "30",
+          "doi": "10.1080/08880018.2017.1313921",
+          "description": "prophylaxis followed by on-demand"
+        },
+        {
+          "mean": 1.86,
+          "sd": 1.52,
+          "source": "Eshghi et al.",
+          "size": "25",
+          "doi": "10.1177/1076029616685429"
+        },
+        {
+          "mean": 4.8,
+          "sd": 5.0,
+          "source": "Roberto Musso",
+          "size": "63",
+          "doi": "10.1160/TH07-06-0409"
+        },
+        {
+          "mean": 4.3,
+          "sd": 6.5,
+          "source": "K. Kavakli",
+          "size": "31",
+          "doi": "10.1111/jth.12828",
+          "description": "3x weekly prophylaxis included"
+        },
+        {
+          "mean": 8.9,
+          "sd": 14.61,
+          "source": "Fukutake",
+          "size": "147",
+          "doi": "10.1007/s12185-018-02574-x",
+          "description": "18.4 (std: 20.15) for on-demand to regular-prophylaxis group with n: 19 size"
+        },
+        {
+          "mean": 3.5,
+          "sd": 2.1,
+          "source": "B Warren early prophylaxis",
+          "size": "15",
+          "doi": "10.1182/bloodadvances.2019001311",
+          "description": "why not using JOS-C subset 14.4 (6.5)"
+        },
+        {
+          "mean": 6.2,
+          "sd": 5.3,
+          "source": "B Warren post prophylaxis",
+          "size": 15,
+          "doi": "10.1182/bloodadvances.2019001311"
+        },
+        {
+          "mean": 3.27,
+          "sd": 6.24,
+          "source": "Manco-Johnson NEJM",
+          "size": "32",
+          "doi": "10.1056/NEJMoa067659"
+        },
+        {
+          "mean": 4.2,
+          "sd": 3.7,
+          "source": "Tagliaferri extended",
+          "size": "84",
+          "doi": "10.1111/j.1365-2516.2008.01791.x"
+        },
+        {
+          "mean": 1.82,
+          "sd": 2.87,
+          "source": "Aznar",
+          "size": "15",
+          "doi": "10.1111/vox.12066"
+        },
+        {
+          "mean": 2.96,
+          "sd": 5.34,
+          "source": "von Drygalski",
+          "size": 78,
+          "doi": "10.1056/NEJMoa2209226",
+          "description": "pre-study received 50 IU/KG/WEEK"
+        }
+      ]
+    }
+  }
+}

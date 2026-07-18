@@ -1,0 +1,49 @@
+data/raw/private-*
+/__pycache__
+*/__pycache__
+.pytest_cache
+.conda
+.idea
+playground.py
+
+# Environment
+.env
+
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
+
+# Numba cache
+*.nbi
+*.nbc
+
+# IDE / Editor
+.vscode/
+
+# Logs
+logs/
+
+# Generated outputs directory
+outputs/
+outputs/transitions/*
+
+# Cached / generated data
+cache/
+*.pkl
+*.parquet
+
+# Generated outputs
+results/*.png
+results/*.jpg
+results/*.jpeg
+results/markov_chain
+results/summary.md
+
+# Jupyter notebooks
+notebooks/
+.ipynb_checkpoints/
+
+# OS junk
+Thumbs.db
+.DS_Store

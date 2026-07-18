@@ -1,0 +1,39 @@
+{
+  "currencies": [
+    {
+      "name": "Iranian Rial",
+      "code": "IRR",
+      "symbol": "﷼"
+    },
+    {
+      "name": "Toman",
+      "code": "T",
+      "symbol": "T"
+    },
+    {
+      "name": "US Dollar",
+      "code": "USD",
+      "symbol": "$"
+    }
+  ],
+  "costs": [
+    {
+      "item": "factor_viii",
+      "assumption": {
+        "iu_per_microgram": 5
+      },
+      "pricing": {
+        "per_unit": {
+          "IRR": 58000,
+          "T": 5800,
+          "USD": 0.075
+        },
+        "per_microgram": {
+          "IRR": 290000,
+          "T": 29000,
+          "USD": 0.375
+        }
+      }
+    }
+  ]
+}

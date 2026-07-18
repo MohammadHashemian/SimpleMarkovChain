@@ -1,0 +1,2 @@
+[console_scripts]
+markov-run = engine.cli:app

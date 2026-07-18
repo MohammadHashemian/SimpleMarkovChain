@@ -1,0 +1,18 @@
+{
+  "environment": {
+    "mode": "production",
+    "seed": 468498
+  },
+  "discounting": {
+    "enable": true,
+    "cost_rate_annual": 0.58,
+    "utility_rate_annual": 0.5
+  },
+  "psa": {
+    "development": 1000,
+    "production": 10000
+  },
+  "time": {
+    "weeks_per_year": 52
+  }
+}

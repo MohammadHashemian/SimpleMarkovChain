@@ -1,0 +1,13 @@
+{
+  "currency": "IRR",
+  "disease_profile": "rare",
+  "gdp_per_capita": {
+    "USD": 4771.4,
+    "IRR": 1800000000,
+    "TOMAN": 180000000
+  },
+  "wtp_multiplier": {
+    "standard": 3,
+    "rare": 10
+  }
+}

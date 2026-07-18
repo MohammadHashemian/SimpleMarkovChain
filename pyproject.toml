@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markov-chains"
+version = "0.8.0"
+description = "Discrete-time Markov chain toolkit for cost-effectiveness analysis and health economic modeling"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+authors = [
+  { name = "Mohammad Hashemian", email = "muhammadhashemian@gmail.com" },
+]
+
+keywords = [
+  "markov-model",
+  "health-economics",
+  "cost-effectiveness",
+  "psa",
+  "monte-carlo",
+  "qaly",
+  "icer",
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "License :: OSI Approved :: MIT License",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+# Runtime dependencies
+dependencies = [
+  "numpy",
+  "pandas",
+  "scipy",
+  "pydantic>=2",
+  "matplotlib",
+  "seaborn",
+  "plotly",
+  "numba",
+  "xarray",
+  "SALib",
+  "statsmodels",
+  "pymc",
+  "sympy",
+  "tqdm",
+  "typer",
+  "enlighten",
+  "pathos",
+  "pyarrow",
+  "fastparquet",
+  "jinja2",
+  "openpyxl",
+]
+
+# Optional dependency groups
+[project.optional-dependencies]
+
+dev = ["pytest", "pytest-cov", "mypy", "ruff"]
+
+notebooks = ["jupyter", "seaborn"]
+
+data = ["openpyxl", "beautifulsoup4", "python-dotenv", "sdv"]
+
+ml = ["scikit-learn", "hmmlearn"]
+
+# CLI entrypoint (optional but powerful)
+[project.scripts]
+markov-run = "engine.cli:app"
+
+# Package discovery
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["engine*", "domain*", "analysis*", "persistence*", "utils*", "visualization", "notebook_tools"]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"
+pythonpath = ["."]
+log_cli_format = "%(filename)s:%(lineno)s:[%(levelname)s] %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+warn_unreachable = true
+disable_error_code = ["no-untyped-def"]
