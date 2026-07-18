@@ -1,5 +1,4 @@
 from domain.enums import HealthStates, Regime
-from utils.decorators import with_context, deprecated
 from utils.math import build_zero_truncated_poisson_probs, cal_body_weight
 from scipy.stats import poisson
 
@@ -98,22 +97,6 @@ def utility(step: int, state: str, **kwargs) -> float:
         return weekly
 
     return weekly / ((1 + rate) ** step)
-
-
-@deprecated("use make_pettersson_score for mutable closure version ")
-@with_context(hemarthrosis_cache=lambda: {"count": 0})
-def pettersson_score(step: int, state: str, **kwargs) -> int:
-    const = kwargs["const"]
-
-    # persistent cache provided by engine
-    cache = kwargs["hemarthrosis_cache"]
-
-    if state == "hemarthrosis":
-        k = kwargs.get("event_count", 0)
-        cache["count"] += k
-
-    score = int(cache["count"] / const["conversion_factor"])
-    return min(int(score), 79)
 
 
 def make_pettersson_score(factor: float):

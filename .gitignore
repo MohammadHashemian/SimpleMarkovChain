@@ -8,6 +8,7 @@ playground.py
 
 # Environment
 .env
+.venv/
 
 # Python bytecode
 *.pyc

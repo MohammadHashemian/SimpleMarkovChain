@@ -354,7 +354,7 @@ class CTMCTransitionGenerator:
 
         # Renormalize (handles floating-point drift)
         row_sums = P.sum(axis=1, keepdims=True)
-        P = np.divide(P, row_sums, where=row_sums > 0)
+        P = np.divide(P, row_sums, where=row_sums > 0, out=np.zeros_like(P))
 
         return P.tolist()
 

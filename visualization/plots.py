@@ -1,11 +1,8 @@
 from functools import wraps
 from typing import Callable, Iterable, Any
-from arviz import summary
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from pymc import data
-from typer import style
 
 
 def apply_grid(
