@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import bootstrap, ks_2samp, pearsonr
-from sklearn.metrics import mean_squared_error
 
 # Calibration Diagnostics
 
@@ -136,6 +135,8 @@ def build_calibration_report(
             pearson_p = np.nan
 
         # Prediction error
+        from sklearn.metrics import mean_squared_error
+
         rmse = float(
             np.sqrt(
                 mean_squared_error(

@@ -1,11 +1,10 @@
 import logging
 from contextlib import contextmanager
 
-from IPython.utils.capture import capture_output
-
 
 @contextmanager
 def log_jupyter_outputs_to_file(file_path: str, level=logging.INFO):
+    from IPython.utils.capture import capture_output
     file_logger = logging.getLogger("file_logger")
     file_logger.setLevel(level)
 
