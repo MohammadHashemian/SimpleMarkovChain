@@ -10,7 +10,7 @@ Classifier: Programming Language :: Python :: 3.10
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Intended Audience :: Science/Research
 Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
-Requires-Python: >=3.10
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: numpy
 Requires-Dist: pandas
@@ -44,52 +44,93 @@ Requires-Dist: seaborn; extra == "notebooks"
 Provides-Extra: data
 Requires-Dist: openpyxl; extra == "data"
 Requires-Dist: beautifulsoup4; extra == "data"
-Requires-Dist: python-dotenv; extra == "data"
 Requires-Dist: sdv; extra == "data"
 Provides-Extra: ml
 Requires-Dist: scikit-learn; extra == "ml"
 Requires-Dist: hmmlearn; extra == "ml"
 
-# Project Structure
+# Cost-Effectiveness Analysis of Hemophilia Interventions
 
-This project follows a layered architecture designed for reproducible health-economic Markov simulations with PSA (Probabilistic Sensitivity Analysis).
-
-Data ingestion happens at the IO boundary layer, while simulation, domain logic, and analysis are strictly separated to ensure modularity and reproducibility.
+A discrete-time Markov chain framework for health-economic modeling of hemophilia, with PSA (Probabilistic Sensitivity Analysis). The engine is implemented as an importable Python module, and all analyses are conducted via Jupyter notebooks.
 
 ---
 
-## 📁 Directory Layout
+## Directory Layout
 
-| Component                                | Location                 | Responsibility                                                                    |
-| ---------------------------------------- | ------------------------ | --------------------------------------------------------------------------------- |
-| JSON data files                          | `data/`                  | Raw input data (costs, currencies, parameters, etc.)                              |
-| Pydantic schemas                         | `persistence/schemas.py` | Typed input/output validation models                                              |
-| Data loaders                             | `persistence/loaders.py` | Reading and parsing external data sources                                         |
-| Path / logging utilities                 | `persistence/`           | File system utilities, logging, experiment IO                                     |
-| Markov engine (core simulation runtime)  | `engine/`                | Simulation execution, transition matrix construction, runner logic                |
-| Domain reward functions                  | `domain/rewards/`        | Clinical logic (utilities, bleeding models, factor consumption, Pettersson score) |
-| PSA (Probabilistic Sensitivity Analysis) | `analysis/psa/`          | Sampling distributions, parameter uncertainty, Monte Carlo drivers                |
-| Economic analysis                        | `analysis/`              | ICER, QALY aggregation, cost-effectiveness computations                           |
-| Visualization                            | `viz/`                   | Plotting functions and result visualization utilities                             |
-| General utilities                        | `utils/`                 | Pure helper functions (math, transformations, decorators)                         |
-| Notebooks                                | `notebooks/`             | Exploratory analysis and experiments                                              |
-| Outputs                                  | `outputs/`               | Generated figures, logs, and simulation results                                   |
+| Component | Location | Responsibility |
+|---|---|---|
+| Input data (JSON) | `data/` | Clinical parameters, costs, utilities, mortality tables, simulation config |
+| Pydantic schemas | `persistence/schemas/` | Typed input/output validation models |
+| Data loaders | `persistence/loaders.py` | Reading and parsing JSON data sources |
+| Model context | `persistence/context.py` | Aggregates all loaded data into a single `ModelContext` |
+| Markov engine | `engine/` | Transition matrix construction, simulation runtime, runners |
+| Domain logic | `domain/` | Health states, regime enums, scenarios, reward functions |
+| Clinical rewards | `domain/rewards/` | Pettersson score, bleeding events, factor consumption, utility weights, mortality modifiers |
+| PSA distributions | `analysis/psa/` | Sampling distributions, parameter uncertainty, Monte Carlo drivers |
+| Economic analysis | `analysis/` | ICER, QALY aggregation, cost-effectiveness computations |
+| General utilities | `utils/` | Pure helper functions (math, transformations, decorators, path utilities) |
+| Visualization | `visualization/` | Plotting functions and result visualization utilities |
+| Notebook tools | `notebook_tools/` | Helper modules shared across notebooks |
+| Notebooks | `notebooks/` | Analysis notebooks (see below) |
+| Tests | `tests/` | Pytest test suite |
+| Outputs | `outputs/` | Generated figures, logs, and simulation results |
 
 ---
 
-## 🧠 Design Principles
+## Notebooks
 
-- **IO boundary separation**: All external data enters through `persistence/`
-- **Domain purity**: Clinical logic is isolated in `domain/`
-- **Engine isolation**: Markov execution is fully independent of analysis
-- **Reproducibility-first PSA design**: All stochastic inputs are structured and typed
-- **Separation of concerns**: Cost, utility, and simulation logic are decoupled
+| Notebook | Purpose |
+|---|---|
+| `00_poisson_mass_functions.ipynb` | Poisson mass function validation for bleeding event distributions |
+| `01_preprocessing.ipynb` | Data preprocessing and parameter derivation |
+| `02_meta_analysis.ipynb` | Bayesian meta-analysis of clinical inputs |
+| `03_psa_simulation.ipynb` | Probabilistic sensitivity analysis (10,000 iterations) |
+| `04_owsa_simulation.ipynb` | One-way sensitivity analysis simulation |
+| `05_psa_analysis.ipynb` | PSA result analysis (CEAC, EVPI, scatter plots) |
+| `07_owsa_analysis.ipynb` | OWSA result analysis (tornado diagrams) |
+
+---
+
+## Setup
+
+```powershell
+# Create and activate virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+
+# Install package and dependencies
+pip install -e .
+```
+
+To run tests:
+
+```powershell
+pytest tests/
+```
 
 ---
 
 ## Data Flow
 
-TO FIT:
-[TransitionGenerator] - [WorkerFunction] - [RewardFunctions]
+```
+data/*.json  ──>  persistence/loaders.py  ──>  ModelContext  ──>  Scenario  ──>  ParameterSet
+                                                                                      │
+                                                                                      ▼
+notebooks/  <──  MarkovResult  <──  MarkovChains  <──  TransitionGenerator  <──  ParameterResolver
+                        │
+                        ▼
+              analysis/ (ICER, QALY, CEAC, EVPI)
+                        │
+                        ▼
+              visualization/ (plots and figures)
+```
 
-Raw Data -> Loaders -> ModelContext -> ScenarioBuilder -> ParameterTemplate -> PSASampler -> ParameterSet -> Engine
+---
+
+## Design Principles
+
+- **IO boundary separation**: All external data enters through `persistence/`
+- **Domain purity**: Clinical logic is isolated in `domain/`
+- **Engine isolation**: Markov execution is fully independent of analysis
+- **Reproducibility-first PSA**: All stochastic inputs are structured and typed
+- **Notebook-driven analysis**: All experiments are documented in notebooks, not ad-hoc scripts

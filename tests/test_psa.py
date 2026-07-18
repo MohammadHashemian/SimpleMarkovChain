@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from analysis.distributions import (
+    Bayesian,
     BetaFromMeanSD,
     Constant,
     DirichletMixture,
@@ -10,6 +11,7 @@ from analysis.distributions import (
     MixtureOfStudies,
     TriangularDist,
 )
+from persistence.schemas.clinicals import StudyEstimate
 from analysis.psa.models import ParameterSet
 from analysis.psa.parameter_resolver import ParameterResolver
 from analysis.psa.parameters import Parameter
@@ -274,3 +276,28 @@ class TestParameterResolver:
         inp = ParameterResolver.build_single(resolved, 0)
         assert isinstance(inp, ModelInput)
         assert inp.bleeding_rate == 22.0
+
+
+class TestBayesianConvergence:
+    """Tests for Bayesian.convergence_diagnostics() with arviz DataTree."""
+
+    def test_diagnostics_returns_correct_keys(self):
+        studies = [
+            StudyEstimate(mean=20.0, sd=5.0, size=100),
+            StudyEstimate(mean=25.0, sd=6.0, size=80),
+            StudyEstimate(mean=18.0, sd=4.0, size=120),
+        ]
+        bayes = Bayesian(studies=studies)
+        bayes.configure_mcmc(draws=500, tune=500, chains=2, cores=1, random_seed=42)
+        diag = bayes.convergence_diagnostics()
+        assert isinstance(diag, dict)
+        assert "r_hat" in diag
+        assert "ess" in diag
+        assert "divergences" in diag
+        assert "converged" in diag
+        assert isinstance(diag["r_hat"], float)
+        assert isinstance(diag["ess"], int)
+        assert isinstance(diag["divergences"], int)
+        assert isinstance(diag["converged"], bool)
+        assert diag["r_hat"] >= 0
+        assert diag["ess"] >= 0

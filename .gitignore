@@ -8,6 +8,8 @@ playground.py
 
 # Environment
 .env
+
+# Virtual environment (deprecated — migrated to conda)
 .venv/
 
 # Python bytecode
@@ -43,6 +45,12 @@ results/summary.md
 
 # Jupyter notebooks
 .ipynb_checkpoints/
+
+# Type checking cache
+.mypy_cache/
+
+# Linter cache
+.ruff_cache/
 
 # OS junk
 Thumbs.db

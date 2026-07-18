@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict
 
 import arviz as az
 import numpy as np
@@ -266,8 +266,8 @@ class Bayesian:
         # Default MCMC config
 
         self._mcmc_config = {
-            "draws": 1000,
-            "tune": 1000,
+            "draws": 2500,
+            "tune": 2000,
             "chains": 4,
             "cores": 4,
             "target_accept": 0.95,
@@ -357,11 +357,11 @@ class Bayesian:
 
     def fit(
         self,
-        draws: int = 1000,
-        tune: int = 1000,
-        chains: int = 2,
-        cores: int = 2,
-        target_accept: float = 0.90,
+        draws: int = 2500,
+        tune: int = 2000,
+        chains: int = 4,
+        cores: int = 4,
+        target_accept: float = 0.95,
         random_seed: int = 42,
         mu_prior: dict[str, float] | None = None,
         tau_prior: dict[str, float] | None = None,
@@ -513,7 +513,6 @@ class Bayesian:
     def summary(
         self,
         var_names: list | None = None,
-        hdi_prob: float = 0.95,
         **kwargs,
     ):
 
@@ -528,18 +527,23 @@ class Bayesian:
         return az.summary(
             self.trace,
             var_names=var_names,
-            hdi_prob=hdi_prob,
             **kwargs,
         )
 
     # Diagnostics
 
-    def convergence_diagnostics(self) -> dict[str, Any]:
+    def convergence_diagnostics(self) -> ConvergenceDiagnostics:
 
         self._ensure_fitted()
 
         rhat = az.rhat(self.trace)
         ess = az.ess(self.trace)
+
+        rhat_ds = rhat.to_dataset()
+        ess_ds = ess.to_dataset()
+
+        rhat_max = float(rhat_ds.to_array().max())
+        ess_min = int(ess_ds.to_array().min())
 
         divergences = int(
             getattr(
@@ -551,61 +555,18 @@ class Bayesian:
             .item()
         )
 
-        converged = bool((rhat.to_array().max() < 1.1) and (divergences == 0))  # type: ignore
+        converged = bool((rhat_max < 1.1) and (divergences == 0))
 
         return {
-            "r_hat": rhat,
-            "ess": ess,
+            "r_hat": rhat_max,
+            "ess": ess_min,
             "divergences": divergences,
             "converged": converged,
         }
 
 
-
-
-        # def sample(self, n: int, seed: int) -> np.ndarray:
-        rng = np.random.default_rng(seed)
-
-        num_studies = len(self.study_data)
-
-        U = rng.uniform(size=(n, num_studies + 1))
-
-        shapes = []
-        scales = []
-
-        # same logic, just using ABRStudy fields
-        for study in self.study_data:
-            mu = study.mean
-            sigma = study.sd
-
-            if sigma <= 0 or mu <= 0:
-                shapes.append(None)
-                scales.append(None)
-                continue
-
-            k = (mu / sigma) ** 2
-            theta = (sigma**2) / mu
-
-            shapes.append(k if k > 0 else None)
-            scales.append(theta if theta > 0 else None)
-
-        study_samples = np.zeros((n, num_studies))
-
-        for j, study in enumerate(self.study_data):
-            mu = study.mean
-
-            if shapes[j] is None:
-                study_samples[:, j] = max(0, mu)
-            else:
-                study_samples[:, j] = gamma_dist.ppf(
-                    U[:, j],
-                    a=shapes[j],
-                    scale=scales[j],
-                )
-
-        weights_raw = U[:, -1][:, None] * np.ones((1, num_studies))
-        weights = np.exp(weights_raw) / np.sum(
-            np.exp(weights_raw), axis=1, keepdims=True
-        )
-
-        return np.sum(weights * study_samples, axis=1)
+class ConvergenceDiagnostics(TypedDict):
+    r_hat: float
+    ess: int
+    divergences: int
+    converged: bool

@@ -23,7 +23,6 @@ openpyxl
 [data]
 openpyxl
 beautifulsoup4
-python-dotenv
 sdv
 
 [dev]
