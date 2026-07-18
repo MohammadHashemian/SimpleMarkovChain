@@ -1,216 +1,16 @@
 from collections.abc import Sequence
-from typing import Any, Protocol, TypedDict
+from typing import Any
 
 import arviz as az
 import numpy as np
 import pymc as pm
-from pydantic import BaseModel, Field
 
 from persistence.schemas.clinicals import StudyEstimate
 
-
-class Distribution(Protocol):
-    def sample(self, n: int, rng: np.random.Generator) -> np.ndarray: ...
-
-    # stochastic
-    def point(self) -> float: ...
-
-
-class Constant:
-    def __init__(self, value: float) -> None:
-        self.value = value
-
-    def sample(self, n: int, rng: np.random.Generator) -> np.ndarray:
-        return np.full(n, self.value)
-
-    def point(self) -> float:
-        return self.value
-
-
-class GammaFromMeanSD(BaseModel):
-    mean: float
-    sd: float
-
-    def sample(self, n: int, rng: np.random.Generator):
-        k = (self.mean / self.sd) ** 2
-        theta = (self.sd**2) / self.mean
-        return rng.gamma(shape=k, scale=theta, size=n)
-
-    def point(self) -> float:
-        return self.mean
-
-
-class GammaFromMeanCV(BaseModel):
-    mean: float
-    cv: float
-
-    def sample(self, n: int, rng: np.random.Generator):
-        if self.cv <= 0:
-            raise ValueError("CV must be > 0")
-
-        shape = 1 / (self.cv**2)
-        scale = self.mean * (self.cv**2)
-
-        return rng.gamma(shape=shape, scale=scale, size=n)
-
-    def point(self) -> float:
-        return self.mean
-
-
-class BetaFromMeanSD(BaseModel):
-    mean: float = Field(..., gt=0, lt=1)
-    sd: float | None = Field(default=None, gt=0)
-    cv: float | None = Field(default=None, ge=0)
-
-    def _resolve_sd(self) -> float:
-        """
-        Resolve SD from either sd or cv.
-        Priority: sd > cv
-        """
-        if self.sd is not None:
-            return self.sd
-
-        if self.cv is not None:
-            return self.mean * self.cv
-
-        raise ValueError("Either sd or cv must be provided.")
-
-    def _to_beta_params(self):
-        sd = self._resolve_sd()
-        var = sd**2
-
-        # Feasibility check for Beta distribution
-        max_var = self.mean * (1 - self.mean)
-        if var >= max_var:
-            raise ValueError(
-                f"Invalid Beta parameters: mean={self.mean}, sd={sd}. "
-                f"Variance must be < mean*(1-mean)={max_var:.6f}"
-            )
-
-        common = (self.mean * (1 - self.mean) / var) - 1
-
-        alpha = self.mean * common
-        beta = (1 - self.mean) * common
-
-        # Numerical safety
-        alpha = max(alpha, 1e-8)
-        beta = max(beta, 1e-8)
-
-        return alpha, beta
-
-    def sample(self, n: int, rng: np.random.Generator):
-        alpha, beta = self._to_beta_params()
-        return rng.beta(alpha, beta, size=n)
-
-    def point(self) -> float:
-        return self.mean
-
-
-# class BetaFromMeanSD(BaseModel):
-#     mean: float
-#     sd: float
-
-#     def sample(self, n: int, rng: np.random.Generator):
-#         var = self.sd**2
-#         common = (self.mean * (1 - self.mean) / var) - 1
-#         alpha = self.mean * common
-#         beta = (1 - self.mean) * common
-#         return rng.beta(alpha, beta, size=n)
-
-#     def point(self) -> float:
-#         return self.mean
-
-
-class TriangularDist(BaseModel):
-    left: float
-    mode: float
-    right: float
-
-    def sample(self, n: int, rng: np.random.Generator):
-        return rng.triangular(self.left, self.mode, self.right, size=n)
-
-    def point(self) -> float:
-        return (self.left + self.mode + self.right) / 3
-
-
-class MixtureOfStudies:
-    def __init__(self, components: Sequence[Any]) -> None:
-        self.components = components
-
-    def sample(self, n: int, rng: np.random.Generator) -> np.ndarray:
-        k = len(self.components)
-
-        samples = np.column_stack([comp.sample(n, rng) for comp in self.components])
-
-        weights = rng.dirichlet(np.ones(k), size=n)
-
-        return np.sum(weights * samples, axis=1)
-
-    def point(self) -> float:
-        # simple average of component means
-        return float(np.mean([c.point() for c in self.components]))
-
-
-class DirichletMixture:
-    """
-    Model averaging via Dirichlet-weighted mixture of distributions.
-    Useful when combining multiple studies/models without assuming a single true effect.
-    """
-
-    def __init__(
-        self,
-        components: Sequence,
-        alpha: float | np.ndarray | None = None,
-    ) -> None:
-        self.components = components
-        self.k = len(components)
-
-        if alpha is None:
-            self.alpha = np.ones(self.k)
-        elif isinstance(alpha, float):
-            self.alpha = np.full(self.k, alpha)
-        else:
-            self.alpha = np.asarray(alpha)
-
-    def sample(self, n: int, rng: np.random.Generator) -> np.ndarray:
-        component_samples = np.column_stack([c.sample(n, rng) for c in self.components])
-
-        weights = rng.dirichlet(self.alpha, size=n)
-
-        return np.sum(weights * component_samples, axis=1)
-
-    def point(self) -> float:
-        w = self.alpha / np.sum(self.alpha)
-        return float(sum(wi * c.point() for wi, c in zip(w, self.components)))
+from analysis.distributions.base import ConvergenceDiagnostics
 
 
 class Bayesian:
-    """
-    Bayesian random-effects meta-analysis for positive/skewed outcomes
-
-    Features
-    --------
-    - Log-normal hierarchical model
-    - Non-centered parameterization
-    - Positive-only posterior predictive samples
-    - Lazy fitting
-    - Stable heterogeneity prior
-    - Faster and more robust than centered normal model
-
-    Statistical model
-    -----------------
-    log(y_i) ~ Normal(theta_i, sigma_i)
-
-    theta_i = mu + z_i * tau
-
-    z_i ~ Normal(0,1)
-
-    where:
-        mu   = pooled log-effect
-        tau  = between-study heterogeneity
-        y_i  = observed study mean
-    """
-
     def __init__(self, studies: Sequence[StudyEstimate]) -> None:
 
         if len(studies) == 0:
@@ -219,13 +19,9 @@ class Bayesian:
         self.studies = studies
         self.k = len(studies)
 
-        # Raw study data
-
         self.means = np.asarray([s.mean for s in studies], dtype=float)
         self.stds = np.asarray([s.sd for s in studies], dtype=float)
         self.sizes = np.asarray([s.size for s in studies], dtype=float)
-
-        # Validation
 
         if np.any(self.means <= 0):
             raise ValueError("All means must be positive for log-normal meta-analysis.")
@@ -236,12 +32,7 @@ class Bayesian:
         if np.any(self.sizes <= 0):
             raise ValueError("All sample sizes must be positive.")
 
-        # Standard errors
-
         self.ses = self.stds / np.sqrt(self.sizes)
-
-        # Log-scale transformation
-        # Delta-method approximation
 
         self.log_means = np.log(self.means)
 
@@ -253,8 +44,6 @@ class Bayesian:
 
         self.within_var = self.log_ses**2
 
-        # Internal state
-
         self.model: pm.Model | None = None
         self.trace: az.InferenceData | None = None
 
@@ -262,8 +51,6 @@ class Bayesian:
         self._sampled = False
 
         self._rng = np.random.default_rng()
-
-        # Default MCMC config
 
         self._mcmc_config = {
             "draws": 2500,
@@ -302,24 +89,16 @@ class Bayesian:
 
         with self.model:
 
-            # Population mean (log scale)
-
             mu = pm.Normal(
                 "mu",
                 mu=mu_prior["mu"],
                 sigma=mu_prior["sigma"],
             )
 
-            # Between-study heterogeneity
-
             tau = pm.HalfNormal(
                 "tau",
                 sigma=tau_prior["sigma"],
             )
-            # OR
-            # tau = pm.Exponential("tau", 2)
-
-            # Non-centered parameterization
 
             z = pm.Normal(
                 "z",
@@ -333,16 +112,12 @@ class Bayesian:
                 mu + z * tau,
             )
 
-            # Observation model
-
             pm.Normal(
                 "y_obs",
                 mu=theta,
                 sigma=self.log_ses,
                 observed=self.log_means,
             )
-
-            # Back-transformed pooled effect
 
             pm.Deterministic(
                 "effect_size",
@@ -352,8 +127,6 @@ class Bayesian:
         self._built = True
 
         return self.model
-
-    # Fitting
 
     def fit(
         self,
@@ -376,7 +149,7 @@ class Bayesian:
 
         self._rng = np.random.default_rng(random_seed)
 
-        with self.model:  # type: ignore
+        with self.model:
 
             self.trace = pm.sample(
                 draws=draws,
@@ -399,19 +172,14 @@ class Bayesian:
         n: int,
         rng: np.random.Generator | None = None,
     ) -> np.ndarray:
-        """
-        Sample from posterior predictive distribution.
-
-        Returns strictly positive values.
-        """
 
         self._ensure_fitted()
 
         if rng is None:
             rng = self._rng
 
-        mu_post = self.trace.posterior["mu"].values.reshape(-1)  # type: ignore
-        tau_post = self.trace.posterior["tau"].values.reshape(-1)  # type: ignore
+        mu_post = self.trace.posterior["mu"].values.reshape(-1)
+        tau_post = self.trace.posterior["tau"].values.reshape(-1)
 
         idx = rng.choice(
             len(mu_post),
@@ -432,7 +200,6 @@ class Bayesian:
 
         y = np.exp(theta)
 
-        # Optional stability clipping for PSA
         y = np.clip(
             y,
             1e-6,
@@ -440,8 +207,6 @@ class Bayesian:
         )
 
         return y
-
-    # Study-level posterior samples
 
     def sample_study_level(
         self,
@@ -454,7 +219,7 @@ class Bayesian:
         if rng is None:
             rng = self._rng
 
-        theta = self.trace.posterior["theta"].values  # type: ignore
+        theta = self.trace.posterior["theta"].values
 
         flat = theta.reshape(-1, self.k)
 
@@ -466,25 +231,21 @@ class Bayesian:
 
         return np.exp(flat[idx])
 
-    # Point estimate
-
     def point(self) -> float:
 
         self._ensure_fitted()
 
-        mu = self.trace.posterior["mu"].values.mean()  # type: ignore
+        mu = self.trace.posterior["mu"].values.mean()
 
         return float(np.exp(mu))
-
-    # Summary statistics
 
     def get_distribution_stats(self) -> dict[str, float]:
 
         self._ensure_fitted()
 
-        mu_samples = np.exp(self.trace.posterior["mu"].values.flatten())  # type: ignore
+        mu_samples = np.exp(self.trace.posterior["mu"].values.flatten())
 
-        tau_samples = self.trace.posterior["tau"].values.flatten()  # type: ignore
+        tau_samples = self.trace.posterior["tau"].values.flatten()
 
         q = np.quantile(
             mu_samples,
@@ -508,8 +269,6 @@ class Bayesian:
             "point_estimate": self.point(),
         }
 
-    # ArviZ summary
-
     def summary(
         self,
         var_names: list | None = None,
@@ -530,8 +289,6 @@ class Bayesian:
             **kwargs,
         )
 
-    # Diagnostics
-
     def convergence_diagnostics(self) -> ConvergenceDiagnostics:
 
         self._ensure_fitted()
@@ -547,11 +304,11 @@ class Bayesian:
 
         divergences = int(
             getattr(
-                self.trace.sample_stats,  # type: ignore
+                self.trace.sample_stats,
                 "diverging",
                 0,
             )
-            .sum()  # type: ignore
+            .sum()
             .item()
         )
 
@@ -563,10 +320,3 @@ class Bayesian:
             "divergences": divergences,
             "converged": converged,
         }
-
-
-class ConvergenceDiagnostics(TypedDict):
-    r_hat: float
-    ess: int
-    divergences: int
-    converged: bool
