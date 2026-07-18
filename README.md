@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" width="160" alt="Hemophilia Markov Model logo" />
+  <img src="logo-light.png" width="500" alt="Hemophilia Markov Model logo" />
 </p>
 
 <h1 align="center">🩸 Hemophilia Cost-Effectiveness Markov Model</h1>
