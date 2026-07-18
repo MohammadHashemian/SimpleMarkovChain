@@ -1,8 +1,6 @@
 import numpy as np
 from pydantic import BaseModel, Field
 
-from analysis.distributions.base import Distribution
-
 
 class Constant:
     def __init__(self, value: float) -> None:

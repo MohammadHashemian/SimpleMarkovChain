@@ -11,11 +11,11 @@ from analysis.distributions import (
     MixtureOfStudies,
     TriangularDist,
 )
-from persistence.schemas.clinicals import StudyEstimate
 from analysis.psa.models import ParameterSet
 from analysis.psa.parameter_resolver import ParameterResolver
 from analysis.psa.parameters import Parameter
 from analysis.psa.sampler import PSASampler
+from persistence.schemas.clinicals import StudyEstimate
 
 SEED = 42
 
@@ -157,10 +157,11 @@ class TestParameter:
         assert np.allclose(samples, 7.0)
 
     def test_cached_sample_returns_same(self):
-        dist = GammaFromMeanSD(mean=10.0, sd=2.0)
-        p = Parameter(distribution=dist, cache=True)
+        cached = np.array([1.0, 2.0, 3.0])
+        p = Parameter(distribution=Constant(7.0), cache=cached)
         s1 = p.sample(100, np.random.default_rng(SEED))
         s2 = p.sample(100, np.random.default_rng(SEED))
+        assert np.array_equal(s1, cached)
         assert np.array_equal(s1, s2)
 
     def test_point(self):

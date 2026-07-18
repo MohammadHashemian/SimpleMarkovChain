@@ -1,4 +1,6 @@
-from analysis.distributions.base import ConvergenceDiagnostics, Distribution
+from analysis.distributions.base import ConvergenceDiagnostics, DiagnosticsProtocol, Distribution
+from analysis.distributions.bayesian import Bayesian
+from analysis.distributions.mixture import DirichletMixture, MixtureOfStudies
 from analysis.distributions.simple import (
     BetaFromMeanSD,
     Constant,
@@ -6,11 +8,10 @@ from analysis.distributions.simple import (
     GammaFromMeanSD,
     TriangularDist,
 )
-from analysis.distributions.mixture import DirichletMixture, MixtureOfStudies
-from analysis.distributions.bayesian import Bayesian
 
 __all__ = [
     "Distribution",
+    "DiagnosticsProtocol",
     "ConvergenceDiagnostics",
     "Constant",
     "GammaFromMeanSD",

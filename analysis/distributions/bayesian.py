@@ -1,13 +1,11 @@
 from collections.abc import Sequence
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pymc as pm
 
-from persistence.schemas.clinicals import StudyEstimate
-
 from analysis.distributions.base import ConvergenceDiagnostics
+from persistence.schemas.clinicals import StudyEstimate
 
 
 class Bayesian:
