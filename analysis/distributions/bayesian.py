@@ -291,11 +291,8 @@ class Bayesian:
 
         self._ensure_fitted()
 
-        rhat = az.rhat(self.trace)
-        ess = az.ess(self.trace)
-
-        rhat_ds = rhat.to_dataset()
-        ess_ds = ess.to_dataset()
+        rhat_ds = az.rhat(self.trace)
+        ess_ds = az.ess(self.trace)
 
         rhat_max = float(rhat_ds.to_array().max())
         ess_min = int(ess_ds.to_array().min())
