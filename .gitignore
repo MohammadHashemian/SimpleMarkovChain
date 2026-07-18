@@ -41,7 +41,6 @@ results/markov_chain
 results/summary.md
 
 # Jupyter notebooks
-notebooks/
 .ipynb_checkpoints/
 
 # OS junk
