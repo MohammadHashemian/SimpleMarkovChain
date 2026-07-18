@@ -68,10 +68,6 @@ data = ["openpyxl", "beautifulsoup4", "python-dotenv", "sdv"]
 
 ml = ["scikit-learn", "hmmlearn"]
 
-# CLI entrypoint (optional but powerful)
-[project.scripts]
-markov-run = "engine.cli:app"
-
 # Package discovery
 [tool.setuptools.packages.find]
 where = ["."]
