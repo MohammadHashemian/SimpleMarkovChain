@@ -64,7 +64,7 @@ dev = ["pytest", "pytest-cov", "mypy", "ruff"]
 
 notebooks = ["jupyter", "seaborn"]
 
-data = ["openpyxl", "beautifulsoup4", "python-dotenv", "sdv"]
+data = ["openpyxl", "beautifulsoup4", "sdv"]
 
 ml = ["scikit-learn", "hmmlearn"]
 

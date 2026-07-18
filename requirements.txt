@@ -19,13 +19,3 @@ pyarrow
 fastparquet
 jinja2
 openpyxl
-beautifulsoup4
-python-dotenv
-sdv
-jupyter
-scikit-learn
-hmmlearn
-pytest
-pytest-cov
-mypy
-ruff
