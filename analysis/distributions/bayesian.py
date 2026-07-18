@@ -294,6 +294,11 @@ class Bayesian:
         rhat_ds = az.rhat(self.trace)
         ess_ds = az.ess(self.trace)
 
+        if hasattr(rhat_ds, "dataset"):
+            rhat_ds = rhat_ds.dataset
+        if hasattr(ess_ds, "dataset"):
+            ess_ds = ess_ds.dataset
+
         rhat_max = float(rhat_ds.to_array().max())
         ess_min = int(ess_ds.to_array().min())
 
