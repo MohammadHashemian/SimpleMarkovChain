@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/opencode-ai/opencode/main/docs/logo.svg" width="0" alt="logo" />
+  <img src="logo.png" width="160" alt="Hemophilia Markov Model logo" />
 </p>
 
 <h1 align="center">🩸 Hemophilia Cost-Effectiveness Markov Model</h1>
