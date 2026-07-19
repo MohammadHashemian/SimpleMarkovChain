@@ -1,5 +1,6 @@
 import pickle
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -11,10 +12,11 @@ from analysis.distributions import (
 )
 from analysis.psa.models import ParameterSet
 from analysis.psa.parameters import Parameter
+from persistence.context import ModelContext
 
 
 class HemophiliaParamRepo:
-    def __init__(self, root: Path, cache_path: Path):
+    def __init__(self, root: Path, cache_path: Path, context: Optional[ModelContext] = None):
         self.root = root
         self.cache_path = cache_path
         self.ows_params_keys = [

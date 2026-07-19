@@ -4,9 +4,9 @@
     "seed": 468498
   },
   "discounting": {
-    "enable": true,
-    "cost_rate_annual": 0.58,
-    "utility_rate_annual": 0.5
+    "enable": false,
+    "cost_rate_annual": 0.058,
+    "utility_rate_annual": 0.05
   },
   "psa": {
     "development": 1000,
