@@ -1,15 +1,17 @@
 import gc
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
+import enlighten
 import pandas as pd
 
 from domain.inputs import ModelInput
 from domain.scenario import ScenarioBundle
 from engine.chains import Chain
-from engine.runners import ScenarioRunner
+from engine.runners import ScenarioRunner, SimulationResult
 from notebook_tools.dataframe_builders import build_df
 from notebook_tools.scenario_helpers import pair_scenarios
 from persistence.context import ModelContext
@@ -55,6 +57,77 @@ def _safe_name(s: str) -> str:
     return s.replace(" ", "_").replace("/", "_")
 
 
+def _run_batch(
+    batch: list[ScenarioBundle[ModelInput]],
+    context: ModelContext,
+    identity_chain: Chain,
+    batch_worker_function: Callable,
+) -> list[SimulationResult]:
+    """Run each scenario in the batch via the vectorized batch worker.
+
+    The batch worker processes all inputs for one scenario in a single
+    numpy sweep, so we call it once per scenario in the batch and wrap
+    each per-iter output in a SimulationResult for the dataframe builder.
+
+    A per-scenario enlighten progress bar is shown (one bar per scenario
+    in the batch) reporting completed iters / total iters with an
+    ETA. The bar advances once per simulated year (every 52 steps)
+    because all n_iters iters run in lockstep — at each year boundary
+    we report n_iters / n_years additional iters as "completed work",
+    so the user sees their natural unit (iters, not iter-steps).
+    """
+    run_id = uuid.uuid4().hex
+    manager = enlighten.get_manager()
+    results: list[SimulationResult] = []
+    for worker_id, bundle in enumerate(batch):
+        scenario = bundle.scenario
+        inputs = bundle.inputs
+        scenario_name = getattr(scenario, "name", str(scenario))
+        n_iters = len(inputs)
+        steps = int(inputs[0].cycle)
+        n_years = max(steps // 52, 1)
+        iters_per_year_tick = max(1, n_iters // n_years)
+
+        progress = manager.counter(
+            total=n_iters,
+            desc=f"Batch Simulation | {scenario_name} | {n_iters} iters",
+            unit="iter",
+        )
+
+        def _on_step(step: int, total_steps: int) -> None:
+            progress.update(iters_per_year_tick)
+
+        outputs = batch_worker_function(
+            chain=identity_chain,
+            inputs=inputs,
+            scenario=scenario,
+            context=context,
+            run_id=run_id,
+            worker_id=worker_id,
+            progress_callback=_on_step,
+            progress_every=52,
+        )
+        # Integer-division rounding can leave a few iters unreported
+        # (e.g. 10000 iters / 98 years = 102 per year, 98 * 102 = 9996).
+        # Force the bar to 100% so the ETA settles cleanly.
+        remaining = n_iters - progress.count
+        if remaining > 0:
+            progress.update(remaining, force=True)
+        progress.close()
+
+        for input_data, output in zip(inputs, outputs, strict=True):
+            results.append(
+                SimulationResult(
+                    run_id=run_id,
+                    scenario=scenario_name,
+                    worker_id=worker_id,
+                    input_data=input_data,
+                    output=output,
+                )
+            )
+    return results
+
+
 def run_scenarios_in_batches(
     bundles: list[ScenarioBundle[ModelInput]],
     context: ModelContext,
@@ -64,9 +137,17 @@ def run_scenarios_in_batches(
     output_dir: Path,
     temp_dir: Path,
     options: dict = {"use_cache_temp": False},
-    engine: Literal["pathos", "multiprocessing"] = "pathos",
+    engine: Literal["pathos", "multiprocessing", "batch"] = "pathos",
+    batch_worker_function: Callable | None = None,
 ):
-    """Run scenario bundles in batches, write per-pair Parquet files, and free memory after each batch."""
+    """Run scenario bundles in batches, write per-pair Parquet files, and free memory after each batch.
+
+    When `engine == "batch"`, a vectorized batch worker is used:
+    `batch_worker_function(chain, inputs, scenario, context, ...)` is called
+    once per scenario with the full list of inputs, and must return a
+    list[ModelOutput] of the same length as inputs. This avoids the
+    per-iter Python overhead of running 10k simulations one at a time.
+    """
 
     logger = setup_root_logger()
     logger.info(
@@ -108,14 +189,22 @@ def run_scenarios_in_batches(
         processed_scenarios = 0
 
         for index, batch in enumerate(batch_generator(bundles, batch_size)):
-            runner = ScenarioRunner(
-                context=context,
-                scenario_bundles=batch,
-                chain_instance=identity_chain,
-                worker_func=worker_function,
-                backend=engine,
-            )
-            batch_results = runner.run_all()
+            if engine == "batch":
+                batch_results = _run_batch(
+                    batch=batch,
+                    context=context,
+                    identity_chain=identity_chain,
+                    batch_worker_function=batch_worker_function or worker_function,
+                )
+            else:
+                runner = ScenarioRunner(
+                    context=context,
+                    scenario_bundles=batch,
+                    chain_instance=identity_chain,
+                    worker_func=worker_function,
+                    backend=engine,
+                )
+                batch_results = runner.run_all()
 
             # convert to DataFrame using existing helper
             try:

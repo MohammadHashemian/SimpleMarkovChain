@@ -18,6 +18,12 @@ from persistence.schemas.simulation import SimulationFile
 from persistence.schemas.utilities import UtilityFile
 from utils.path_utils import get_project_root
 
+_MORTALITY_FILE_BY_SOURCE: dict[str, str] = {
+    "iran": "data/mortality_iran.json",
+    "poland": "data/mortality.json",
+    "default": "data/mortality.json",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ModelContext:
@@ -33,12 +39,18 @@ class ModelContext:
     @classmethod
     def load(cls) -> "ModelContext":
         root = cls.PROJECT_ROOT
+        simulation = load_typed_json(
+            root / "data/simulation.json", parse_simulation
+        )
+        mort_rel = _MORTALITY_FILE_BY_SOURCE.get(
+            simulation.mortality.source, _MORTALITY_FILE_BY_SOURCE["default"]
+        )
         return cls(
-            simulation=load_typed_json(root / "data/simulation.json", parse_simulation),
+            simulation=simulation,
             clinical=load_typed_json(root / "data/clinical.json", parse_clinical),
             costs=load_typed_json(root / "data/economic.json", parse_cost_file),
             utilities=load_typed_json(root / "data/utilities.json", parse_utilities),
-            mortality=load_typed_json(root / "data/mortality.json", parse_mortality),
+            mortality=load_typed_json(root / mort_rel, parse_mortality),
             economic_policy=load_typed_json(
                 root / "data/economic_policy.json", parse_economic_policy
             ),

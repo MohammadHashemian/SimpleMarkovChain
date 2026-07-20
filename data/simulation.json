@@ -12,6 +12,9 @@
     "development": 1000,
     "production": 10000
   },
+  "mortality": {
+    "source": "iran"
+  },
   "time": {
     "weeks_per_year": 52
   }
