@@ -1,6 +1,5 @@
 import pickle
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -17,7 +16,7 @@ from persistence.context import ModelContext
 
 class HemophiliaParamRepo:
     def __init__(
-        self, root: Path, cache_path: Path, context: Optional[ModelContext] = None
+        self, root: Path, cache_path: Path, context: ModelContext | None = None
     ):
         self.root = root
         self.cache_path = cache_path

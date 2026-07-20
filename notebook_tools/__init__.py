@@ -14,6 +14,7 @@ from notebook_tools.iran_mortality import (
     load_iran_population,
     load_wpp_mortality,
     merge_cohort_with_wpp,
+    validate_mortality_table,
     write_mortality_json,
 )
 from notebook_tools.parameter_sets import HemophiliaParamRepo
@@ -49,6 +50,7 @@ __all__ = [
     "load_iran_population",
     "load_wpp_mortality",
     "merge_cohort_with_wpp",
+    "validate_mortality_table",
     "write_mortality_json",
     "HemophiliaParamRepo",
     "insert_scenario",

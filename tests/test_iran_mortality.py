@@ -22,6 +22,7 @@ from notebook_tools.iran_mortality import (
     load_iran_population,
     load_wpp_mortality,
     merge_cohort_with_wpp,
+    validate_mortality_table,
     write_mortality_json,
 )
 
@@ -420,3 +421,124 @@ def test_merge_cohort_with_wpp_preserves_existing_values(
     # Cohort values should be preserved exactly
     for label, rate in cohort["age_specific"].items():
         assert merged["age_specific"][label] == rate
+
+
+# ---------------------------------------------------------------------------
+# Validation tests
+# ---------------------------------------------------------------------------
+
+
+def _build_clean_table() -> dict:
+    """A minimal but fully valid mortality table for validation tests."""
+    return {
+        "use_age_specific": True,
+        "crude_annual_rate": 0.005,
+        "age_specific": {
+            label: 0.001 + 0.001 * i
+            for i, (label, _) in enumerate(POLAND_AGE_BUCKETS)
+        },
+        "source": {"method": "test"},
+    }
+
+
+def test_validate_clean_table_returns_no_warnings():
+    table = _build_clean_table()
+    assert validate_mortality_table(table) == []
+
+
+def test_validate_strict_clean_table_does_not_raise():
+    validate_mortality_table(_build_clean_table(), strict=True)
+
+
+def test_validate_warns_on_missing_bucket():
+    table = _build_clean_table()
+    del table["age_specific"]["40-44"]
+    warnings = validate_mortality_table(table)
+    assert any("Missing Poland buckets" in w and "40-44" in w for w in warnings)
+
+
+def test_validate_strict_raises_on_missing_bucket():
+    table = _build_clean_table()
+    del table["age_specific"]["40-44"]
+    with pytest.raises(ValueError, match="Missing Poland buckets"):
+        validate_mortality_table(table, strict=True)
+
+
+def test_validate_warns_on_extra_bucket():
+    table = _build_clean_table()
+    table["age_specific"]["200+"] = 0.99
+    warnings = validate_mortality_table(table)
+    assert any("Unexpected buckets" in w and "200+" in w for w in warnings)
+
+
+def test_validate_warns_on_rate_zero():
+    table = _build_clean_table()
+    table["age_specific"]["0"] = 0.0
+    warnings = validate_mortality_table(table)
+    assert any("outside (0, 1]" in w and "'0'" in w for w in warnings)
+
+
+def test_validate_warns_on_rate_above_one():
+    table = _build_clean_table()
+    table["age_specific"]["90+"] = 1.5
+    warnings = validate_mortality_table(table)
+    assert any("outside (0, 1]" in w and "'90+'" in w for w in warnings)
+
+
+def test_validate_strict_raises_on_rate_out_of_range():
+    table = _build_clean_table()
+    table["age_specific"]["0"] = -0.1
+    with pytest.raises(ValueError, match="outside"):
+        validate_mortality_table(table, strict=True)
+
+
+def test_validate_warns_on_non_finite_rate():
+    import math
+
+    table = _build_clean_table()
+    table["age_specific"]["0"] = math.nan
+    warnings = validate_mortality_table(table)
+    assert any("non-finite" in w for w in warnings)
+
+
+def test_validate_warns_on_crud_outside_iran_range():
+    table = _build_clean_table()
+    table["crude_annual_rate"] = 0.5
+    warnings = validate_mortality_table(table)
+    assert any("Crude rate" in w and "outside" in w for w in warnings)
+
+
+def test_validate_strict_raises_on_crud_outside_iran_range():
+    table = _build_clean_table()
+    table["crude_annual_rate"] = 0.0001
+    with pytest.raises(ValueError, match="Crude rate"):
+        validate_mortality_table(table, strict=True)
+
+
+def test_validate_accepts_none_buckets():
+    table = _build_clean_table()
+    table["age_specific"]["0"] = None
+    # None is allowed; it represents "unreliable" rather than an error.
+    assert validate_mortality_table(table) == []
+
+
+def test_validate_real_iran_output_passes():
+    """End-to-end: the real reconstructed Male WPP CSV + real Iran
+    2024 population should pass validation without warnings."""
+    wpp_csv = PROJECT_ROOT / "data" / "raw" / "population-un-data-portal-iran.csv"
+    pop_csv = PROJECT_ROOT / "data" / "raw" / "Iran_2024.csv"
+    if not (wpp_csv.exists() and pop_csv.exists()):
+        pytest.skip("Real Iran WPP / population data not present")
+    table = build_mortality_from_wpp(
+        wpp_csv, year=2024, sex="Male", pop_csv=pop_csv
+    )
+    warnings = validate_mortality_table(table)
+    assert warnings == [], f"Real WPP output should be clean; got: {warnings}"
+
+
+def test_validate_real_poland_file_passes():
+    poland = PROJECT_ROOT / "data" / "mortality.json"
+    if not poland.exists():
+        pytest.skip("data/mortality.json not present")
+    table = json.loads(poland.read_text(encoding="utf-8"))
+    assert validate_mortality_table(table) == []
