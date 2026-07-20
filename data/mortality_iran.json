@@ -26,10 +26,10 @@
   "source": {
     "country": "Iran",
     "method": "un_wpp_abridged",
-    "wpp_csv": "data\\raw\\population-un-data-portal-iran.csv",
+    "wpp_csv": "C:\\Users\\Jino\\Desktop\\University\\hemophilia\\markov-chain-3-14\\data\\raw\\population-un-data-portal-iran.csv",
     "year": 2024,
     "sex": "Male",
-    "pop_csv": "data\\raw\\Iran_2024.csv",
+    "pop_csv": "C:\\Users\\Jino\\Desktop\\University\\hemophilia\\markov-chain-3-14\\data\\raw\\Iran_2024.csv",
     "calculator_version": "1.0.0",
     "citation": "United Nations DESA, Population Division (2024). World Population Prospects 2024."
   }

@@ -19,3 +19,4 @@ pyarrow
 fastparquet
 jinja2
 openpyxl
+polars

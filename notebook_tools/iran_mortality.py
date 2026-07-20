@@ -41,6 +41,13 @@ A third mode (``merge_cohort_with_wpp``) keeps the cohort-derived
 value where it is reliable and fills the ``NaN`` buckets from WPP,
 so a single output combines the best of both.
 
+This module is data-only: it returns a dict matching the
+``MortalityFile`` schema (see ``persistence/schemas/mortality.py``).
+The end-to-end pipeline (build the table, validate it, compare it
+to a reference, and write the output) lives in the notebook
+``notebooks/01b_mortality_iran.ipynb`` because the project is
+analytic, not a CLI.
+
 Output units
 ------------
 All rates are deaths per person-year. So ``0.00369`` is 3.69 per
@@ -51,7 +58,7 @@ Validation
 The :func:`validate_mortality_table` function checks the structure
 (rate range, bucket coverage) and round-trips through the Pydantic
 ``MortalityFile`` schema. It returns a list of warnings rather than
-raising, so the CLI can print a clean summary.
+raising, so callers can decide how strict to be.
 
 How to cite
 -----------
@@ -94,14 +101,13 @@ Limitations and assumptions
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-import pandas as pd
+import polars as pl
 from pydantic import ValidationError
 
 from persistence.schemas.mortality import MortalityFile
@@ -134,6 +140,9 @@ Sex = Literal["total", "male", "female"]
 
 #: Sex labels as they appear in the WPP "Sex" column.
 WPPSex = Literal["Male", "Female", "Both sexes"]
+
+#: Column name used by the WPP DataFrame for the mortality rate.
+WPP_VALUE_COL = "value"
 
 #: Age-bucket labels and the integer ages they cover. The first entry
 #: is the single-year bucket for age 0; the last is the open 90+ bucket
@@ -206,8 +215,8 @@ _MAX_REASONABLE_CRUDE = 0.05
 # ---------------------------------------------------------------------------
 
 
-def load_iran_population(path: str | Path) -> pd.DataFrame:
-    """Load an ``Iran_<year>.csv`` population-by-age file.
+def load_iran_population(path: str | Path) -> pl.DataFrame:
+    """Load an ``Iran_<year>.csv`` population-by-age file into polars.
 
     The file must have columns ``Age, M, F``. ``Age`` may contain the
     string ``"100+"`` for the open age group; this is coerced to the
@@ -221,26 +230,34 @@ def load_iran_population(path: str | Path) -> pd.DataFrame:
 
     Returns
     -------
-    pandas.DataFrame
-        Indexed by integer age (0..100). Columns ``M``, ``F``, and
-        ``Total = M + F``.
+    polars.DataFrame
+        Columns ``Age`` (Int64), ``M`` (Int64), ``F`` (Int64), and
+        ``Total`` (Int64 = M + F). Sorted by ``Age``.
     """
-    df = pd.read_csv(path)
-    if not {"Age", "M", "F"}.issubset(df.columns):
+    df = pl.read_csv(
+        path,
+        schema_overrides={"Age": pl.Utf8, "M": pl.Int64, "F": pl.Int64},
+    )
+    required = {"Age", "M", "F"}
+    missing = required - set(df.columns)
+    if missing:
         raise ValueError(
             f"{path} is missing required columns; expected Age, M, F; "
-            f"got {list(df.columns)}"
+            f"got {df.columns}"
         )
-    df["Age"] = df["Age"].replace("100+", "100")
-    df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
-    df["M"] = pd.to_numeric(df["M"], errors="coerce")
-    df["F"] = pd.to_numeric(df["F"], errors="coerce")
-    df = df.dropna(subset=["Age", "M", "F"])
-    df["Age"] = df["Age"].astype(int)
-    df["M"] = df["M"].astype(int)
-    df["F"] = df["F"].astype(int)
-    df["Total"] = df["M"] + df["F"]
-    return df.set_index("Age")[["M", "F", "Total"]].sort_index()
+    df = df.with_columns(
+        pl.when(pl.col("Age") == "100+")
+        .then(pl.lit("100"))
+        .otherwise(pl.col("Age"))
+        .alias("Age")
+        .cast(pl.Int64, strict=False)
+    ).drop_nulls(subset=["Age", "M", "F"]).with_columns(
+        pl.col("Age").cast(pl.Int64),
+        pl.col("M").cast(pl.Int64),
+        pl.col("F").cast(pl.Int64),
+        (pl.col("M") + pl.col("F")).alias("Total").cast(pl.Int64),
+    )
+    return df.sort("Age")
 
 
 def load_wpp_mortality(
@@ -248,7 +265,7 @@ def load_wpp_mortality(
     year: int,
     sex: WPPSex = "Male",
     indicator_id: int = 79,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Load a UN Data Portal abridged-life-table export for Iran.
 
     The file is expected to be the CSV download from
@@ -275,49 +292,55 @@ def load_wpp_mortality(
 
     Returns
     -------
-    pandas.DataFrame
-        Indexed by integer ``AgeStart`` (0, 1, 5, ..., 100). Columns
-        ``age_label`` (UN's human-readable bucket), ``value``
-        (mortality rate, deaths per person-year), and ``poland_label``
-        (the matching Poland bucket; rows for 90, 95, 100 all map
-        to ``"90+"``).
+    polars.DataFrame
+        Columns ``AgeStart`` (Int64), ``age_label`` (Utf8, the UN's
+        human-readable bucket), ``value`` (Float64, deaths per
+        person-year), and ``poland_label`` (Utf8, the matching
+        Poland bucket; rows for 90, 95, 100 all map to ``"90+"``).
     """
-    df = pd.read_csv(csv_path)
-    required = {"IndicatorId", "Time", "Variant", "Sex", "AgeStart", "Age", "EstimateType", "Value"}
+    df = pl.read_csv(csv_path)
+    required = {
+        "IndicatorId", "Time", "Variant", "Sex", "AgeStart",
+        "Age", "EstimateType", "Value",
+    }
     missing = required - set(df.columns)
     if missing:
         raise ValueError(
             f"{csv_path} doesn't look like a UN Data Portal export: "
             f"missing columns {sorted(missing)}"
         )
-    filtered = df[
-        (df["IndicatorId"] == indicator_id)
-        & (df["Time"] == year)
-        & (df["Sex"] == sex)
-        & (df["Variant"] == "Median")
-        & (df["EstimateType"] == "Model-based Estimates")
-    ].copy()
-    if filtered.empty:
+    filtered = df.filter(
+        (pl.col("IndicatorId") == indicator_id)
+        & (pl.col("Time") == year)
+        & (pl.col("Sex") == sex)
+        & (pl.col("Variant") == "Median")
+        & (pl.col("EstimateType") == "Model-based Estimates")
+    )
+    if filtered.is_empty():
         raise ValueError(
             f"No rows in {csv_path} match IndicatorId={indicator_id}, "
             f"Time={year}, Sex={sex!r}, Variant=Median, "
             f"EstimateType=Model-based Estimates. Did you forget to "
             f"expand the Sex / Age filters on the UN Data Portal?"
         )
-    # AgeStart is always integer in the WPP export; cast explicitly
-    # so downstream code can do arithmetic on it.
-    filtered["AgeStart"] = filtered["AgeStart"].astype(int)
-    filtered["Value"] = filtered["Value"].astype(float)
-    filtered["poland_label"] = filtered["AgeStart"].map(WPP_AGE_START_TO_POLAND)
-    # The three open-age rows (90, 95, 100) collapse to "90+".
-    filtered.loc[filtered["AgeStart"].isin(WPP_OPEN_AGE_STARTS), "poland_label"] = "90+"
-    out = (
-        filtered[["AgeStart", "Age", "Value", "poland_label"]]
-        .rename(columns={"Age": "age_label", "Value": "value"})
-        .set_index("AgeStart")
-        .sort_index()
+    # polars supports an expression-based dict mapping via replace_strict.
+    poland_map = {int(k): v for k, v in WPP_AGE_START_TO_POLAND.items()}
+    open_label = "90+"
+    filtered = (
+        filtered.with_columns(
+            pl.col("AgeStart").cast(pl.Int64),
+            pl.col("Value").cast(pl.Float64).alias(WPP_VALUE_COL),
+        )
+        .with_columns(
+            pl.col("AgeStart")
+            .replace_strict(poland_map, default=open_label)
+            .alias("poland_label")
+        )
+        .rename({"Age": "age_label"})
+        .select("AgeStart", "age_label", WPP_VALUE_COL, "poland_label")
+        .sort("AgeStart")
     )
-    return out
+    return filtered
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +349,9 @@ def load_wpp_mortality(
 
 
 def compute_cohort_mortality(
-    pop_t: pd.Series,
-    pop_t1: pd.Series,
-) -> pd.Series:
+    pop_t: pl.Series,
+    pop_t1: pl.Series,
+) -> pl.Series:
     """Single-year mortality rate via the cohort survival method.
 
     For each age ``x`` present in ``pop_t``::
@@ -342,95 +365,112 @@ def compute_cohort_mortality(
     Parameters
     ----------
     pop_t
-        Population at exact ages at time ``t`` (integer index, values
-        in persons). Should be a single-sex series (``M``, ``F``, or
-        ``Total``).
+        Polars Series of populations at exact ages at time ``t``.
+        Must be a single-sex column (``M``, ``F``, or ``Total``).
     pop_t1
-        Population at exact ages at time ``t + 1`` (same shape as
-        ``pop_t``).
+        Polars Series of populations at exact ages at time ``t + 1``
+        (same length as ``pop_t`` and aligned by row).
 
     Returns
     -------
-    pandas.Series
-        Indexed by ``x`` with one float value per age. ``NaN`` marks
-        ages where the cohort grew (``P(x+1, t+1) > P(x, t)``) and
-        the rate therefore cannot be estimated.
+    polars.Series
+        Length-``N`` Float64 Series of single-year mortality rates.
+        ``null`` (NaN) marks ages where the cohort grew
+        (``P(x+1, t+1) > P(x, t)``) and the rate therefore cannot
+        be estimated.
     """
-    rates: dict[int, float] = {}
-    for x in pop_t.index:
-        next_x = x if x == 100 else x + 1
-        if next_x not in pop_t1.index:
-            rates[int(x)] = math.nan
-            continue
-        p_t = _to_float(pop_t.loc[x])
-        p_t1 = _to_float(pop_t1.loc[next_x])
+    if len(pop_t) != len(pop_t1):
+        raise ValueError(
+            f"pop_t and pop_t1 must have the same length; got "
+            f"{len(pop_t)} and {len(pop_t1)}"
+        )
+    n = len(pop_t)
+    if n < 2:
+        # Need at least one closed age + the open interval.
+        return pl.Series("mortality_rate", [float("nan")] * n, dtype=pl.Float64)
+
+    pop_t_list = [float(x) for x in pop_t.to_list()]
+    pop_t1_list = [float(x) for x in pop_t1.to_list()]
+    rates: list[float] = []
+    for i in range(n):
+        p_t = pop_t_list[i]
+        # For the open interval (age 100), the next population is
+        # pop_t1 at the same row; for all other ages, the next
+        # population is pop_t1 at i+1.
+        if i == n - 1:
+            p_next = pop_t1_list[i]
+        else:
+            p_next = pop_t1_list[i + 1]
         if p_t <= 0:
-            rates[int(x)] = math.nan
+            rates.append(float("nan"))
             continue
-        q = 1.0 - p_t1 / p_t
+        q = 1.0 - p_next / p_t
         if q < 0.0:
-            # Population grew; we cannot disentangle births/in-migration
-            # from zero deaths. Mark as unreliable (NaN, not 0 - a 0
-            # rate would be a quantitative claim, not a missing value).
-            rates[int(x)] = math.nan
+            # Population grew; mark as unreliable (NaN, not 0).
+            rates.append(float("nan"))
             continue
-        # Pure-Python clamp to [0, 1]; avoids np.clip's broader Scalar
-        # type which Pylance flags against float.__new__.
-        rates[int(x)] = min(max(q, 0.0), 1.0)
-    return pd.Series(rates, name="mortality_rate").sort_index()
+        # Pure-Python clamp to [0, 1].
+        rates.append(min(max(q, 0.0), 1.0))
+    return pl.Series("mortality_rate", rates, dtype=pl.Float64)
 
 
 def aggregate_to_poland_buckets(
-    rates: pd.Series,
-    populations: pd.Series,
-) -> dict[str, float]:
+    rates: pl.Series,
+    populations: pl.Series,
+    ages: pl.Series,
+) -> dict[str, float | None]:
     """Aggregate single-year ``q(x)`` to the 5-year buckets.
 
     Each bucket's rate is the **population-weighted mean** of its
     constituent single-year rates, so the result reflects the rate
     actually experienced by the cohort in the bucket. Buckets with
-    no valid (non-NaN) single-year rates are returned as ``NaN``.
+    no valid (non-NaN) single-year rates are returned as ``None``.
 
     Parameters
     ----------
     rates
-        Single-year mortality rates, indexed by integer age. ``NaN``
-        entries are skipped (and the whole bucket is ``NaN`` if every
-        age in the bucket is ``NaN``).
+        Single-year mortality rates, aligned with ``ages`` and
+        ``populations``. ``null`` entries are skipped.
     populations
-        Population by single year of age (same index as ``rates``)
-        used as the aggregation weights.
+        Population at each single year of age, aligned with ``rates``.
+    ages
+        Integer age for each row, aligned with ``rates``.
 
     Returns
     -------
     dict
         Mapping from Poland bucket label (``"0"``, ``"1-4"``, ...,
-        ``"90+"``) to a float mortality rate, or ``NaN`` for
+        ``"90+"``) to a float mortality rate, or ``None`` for
         unreliable buckets.
     """
-    aggregated: dict[str, float] = {}
+    df = pl.DataFrame(
+        {
+            "age": ages.cast(pl.Int64),
+            "rate": rates.cast(pl.Float64),
+            "pop": populations.cast(pl.Float64),
+        }
+    )
+    aggregated: dict[str, float | None] = {}
     for label, age_range in POLAND_AGE_BUCKETS:
-        ages = [a for a in age_range if a in rates.index]
-        if not ages:
-            aggregated[label] = math.nan
+        bucket = df.filter(pl.col("age").is_in(list(age_range)))
+        bucket = bucket.filter(pl.col("rate").is_not_null() & pl.col("pop").is_not_null())
+        if bucket.is_empty():
+            aggregated[label] = None
             continue
-        bucket_rates = rates.loc[ages]
-        bucket_pops = populations.reindex(ages).fillna(0.0)
-        valid = ~bucket_rates.isna()
-        if not valid.any() or bucket_pops[valid].sum() <= 0:
-            aggregated[label] = math.nan
+        # Population-weighted mean: sum(rate * pop) / sum(pop)
+        weighted = (bucket["rate"] * bucket["pop"]).sum()
+        denom = bucket["pop"].sum()
+        if not denom or denom == 0:
+            aggregated[label] = None
             continue
-        # weighted.mean = sum(rate * pop) / sum(pop)
-        weighted = (bucket_rates[valid] * bucket_pops[valid]).sum()
-        denom = bucket_pops[valid].sum()
-        aggregated[label] = _to_float(weighted / denom)
+        aggregated[label] = float(weighted) / float(denom)
     return aggregated
 
 
 def compute_crude_annual_rate(
-    pop_t: pd.Series,
-    pop_t1: pd.Series,
-) -> float:
+    pop_t: pl.Series,
+    pop_t1: pl.Series,
+) -> float | None:
     """Crude annual death rate (deaths per person-year) from two snapshots.
 
     Estimated as
@@ -439,18 +479,26 @@ def compute_crude_annual_rate(
     *loss*) and treats growth as zero deaths, so the estimate is a
     lower bound on the true crude rate when migration is positive.
     """
-    deaths = 0.0
-    for x in pop_t.index:
-        next_x = x if x == 100 else x + 1
-        if next_x not in pop_t1.index:
-            continue
-        deaths += max(
-            _to_float(pop_t.loc[x]) - _to_float(pop_t1.loc[next_x]),
-            0.0,
+    if len(pop_t) != len(pop_t1):
+        raise ValueError(
+            f"pop_t and pop_t1 must have the same length; got "
+            f"{len(pop_t)} and {len(pop_t1)}"
         )
-    total_pop = _to_float(pop_t.sum())
+    n = len(pop_t)
+    if n < 2:
+        return None
+    pop_t_list = [float(x) for x in pop_t.to_list()]
+    pop_t1_list = [float(x) for x in pop_t1.to_list()]
+    deaths = 0.0
+    for i in range(n):
+        if i == n - 1:
+            p_next = pop_t1_list[i]
+        else:
+            p_next = pop_t1_list[i + 1]
+        deaths += max(pop_t_list[i] - p_next, 0.0)
+    total_pop = sum(pop_t_list)
     if total_pop <= 0:
-        return math.nan
+        return None
     return deaths / total_pop
 
 
@@ -484,21 +532,17 @@ def build_mortality_table(
     pop_t = load_iran_population(iran_csv_t)
     pop_t1 = load_iran_population(iran_csv_t1)
 
-    if sex == "total":
-        series_t, series_t1 = pop_t["Total"], pop_t1["Total"]
-    elif sex == "male":
-        series_t, series_t1 = pop_t["M"], pop_t1["M"]
-    elif sex == "female":
-        series_t, series_t1 = pop_t["F"], pop_t1["F"]
-    else:
-        raise ValueError(f"Unknown sex: {sex!r}")
-
-    common = series_t.index.intersection(series_t1.index)
-    series_t = series_t.loc[common].astype(float)
-    series_t1 = series_t1.loc[common].astype(float)
+    col = {"total": "Total", "male": "M", "female": "F"}[sex]
+    # Inner-join on Age so both series are aligned by age.
+    joined = pop_t.select(["Age", col]).join(
+        pop_t1.select(["Age", col]), on="Age", how="inner", suffix="_t1"
+    ).sort("Age")
+    series_t = joined[col]
+    series_t1 = joined[f"{col}_t1"]
+    ages = joined["Age"]
 
     rates = compute_cohort_mortality(series_t, series_t1)
-    aggregated = aggregate_to_poland_buckets(rates, series_t)
+    aggregated = aggregate_to_poland_buckets(rates, series_t.cast(pl.Float64), ages)
     crude = compute_crude_annual_rate(series_t, series_t1)
 
     return {
@@ -522,8 +566,8 @@ def build_mortality_table(
 
 
 def _combine_90_plus(
-    wpp: pd.DataFrame,
-    pop_csv: str | Path | None,
+    wpp: pl.DataFrame,
+    pop: pl.DataFrame | None,
     sex: WPPSex = "Male",
 ) -> float | None:
     """Combine the 90-94, 95-99 and 100+ WPP buckets into a single
@@ -534,76 +578,77 @@ def _combine_90_plus(
     (or female / total, depending on ``sex``) population in each
     5-year age range as the weight.
     """
-    open_rows = wpp.loc[wpp.index.isin(WPP_OPEN_AGE_STARTS)]
-    if open_rows.empty:
+    open_rows = wpp.filter(pl.col("AgeStart").is_in(list(WPP_OPEN_AGE_STARTS)))
+    if open_rows.is_empty():
         return None
-    if pop_csv is None:
-        # Fallback: mid-range proxy. 95-99 is preferred; otherwise any.
-        if 95 in open_rows.index:
-            return _to_float(open_rows.loc[95, "value"])
-        return _to_float(open_rows["value"].iloc[0])
+    if pop is None:
+        if 95 in open_rows["AgeStart"].to_list():
+            row = open_rows.filter(pl.col("AgeStart") == 95)
+            value: Any = row[WPP_VALUE_COL].first()
+            return float(value)
+        value = open_rows[WPP_VALUE_COL].first()
+        return float(value)
 
-    pop = load_iran_population(pop_csv)
     col = {"Male": "M", "Female": "F"}.get(sex, "Total")
     if col not in pop.columns:
         col = "Total"
-    # Population at the 100+ open interval is reported as a single
-    # age 100 row in the Iran_<year>.csv; summing 90:94 and 95:99
-    # inclusive gives the matching closed 5-year buckets.
-    weights: dict[int, int] = {
-        90: int(_to_float(pop.loc[90:94, col].sum())),
-        95: int(_to_float(pop.loc[95:99, col].sum())),
-        100: int(_to_float(pop.loc[100, col])) if 100 in pop.index else 0,
+    ages_in_pop = pop["Age"].to_list()
+    has_100 = 100 in ages_in_pop
+    weights = {
+        90: int(pop.filter((pl.col("Age") >= 90) & (pl.col("Age") <= 94))[col].sum()),
+        95: int(pop.filter((pl.col("Age") >= 95) & (pl.col("Age") <= 99))[col].sum()),
+        100: int(pop.filter(pl.col("Age") == 100)[col].sum()) if has_100 else 0,
     }
     total = sum(weights.values())
     if total <= 0:
-        return _to_float(open_rows["value"].iloc[0])
-    weighted = sum(
-        weights[age_start] * _to_float(open_rows.loc[age_start, "value"])
-        for age_start in WPP_OPEN_AGE_STARTS
-        if age_start in open_rows.index
-    )
-    return float(weighted) / float(total)
+        value = open_rows[WPP_VALUE_COL].first()
+        return float(value)
+    weighted = 0.0
+    for age_start in WPP_OPEN_AGE_STARTS:
+        if age_start not in open_rows["AgeStart"].to_list():
+            continue
+        rate = float(
+            open_rows.filter(pl.col("AgeStart") == age_start)[WPP_VALUE_COL].item()
+        )
+        weighted += weights[age_start] * rate
+    return weighted / total
 
 
 def _crude_annual_rate_from_wpp(
-    wpp: pd.DataFrame,
-    pop_csv: str | Path | None,
+    wpp: pl.DataFrame,
+    pop: pl.DataFrame | None,
     sex: WPPSex,
 ) -> float | None:
-    """Crude annual death rate from the WPP rates + (optional) population.
-
-    Iterating ``wpp.index`` directly (rather than ``iterrows()``)
-    keeps the age typed as int - ``iterrows`` types the index as
-    ``Hashable`` which Pylance rejects in ``+ 4`` expressions.
-    """
-    if pop_csv is None:
+    """Crude annual death rate from the WPP rates + (optional) population."""
+    if pop is None:
         return None
-    pop = load_iran_population(pop_csv)
     col = {"Male": "M", "Female": "F"}.get(sex, "Total")
     if col not in pop.columns:
         col = "Total"
+    ages_in_pop = pop["Age"].to_list()
+    has_100 = 100 in ages_in_pop
     deaths = 0.0
     total_pop = 0.0
-    for age_start in wpp.index:
-        rate = _to_float(wpp.loc[age_start, "value"])
+    for row in wpp.iter_rows(named=True):
+        age_start = int(row["AgeStart"])
+        rate = float(row[WPP_VALUE_COL])
         if age_start == 0:
-            p = _to_float(pop.loc[0, col])
+            p = int(pop.filter(pl.col("Age") == 0)[col].sum())
         elif age_start == 1:
-            p = _to_float(pop.loc[1:4, col].sum())
+            p = int(pop.filter((pl.col("Age") >= 1) & (pl.col("Age") <= 4))[col].sum())
         elif age_start in (90, 95):
             upper = age_start + 4
-            p = _to_float(pop.loc[age_start:upper, col].sum())
+            p = int(pop.filter((pl.col("Age") >= age_start) & (pl.col("Age") <= upper))[col].sum())
         elif age_start == 100:
-            p = _to_float(pop.loc[100, col]) if 100 in pop.index else 0.0
+            p = int(pop.filter(pl.col("Age") == 100)[col].sum()) if has_100 else 0
         else:
             upper = age_start + 4
-            p = _to_float(pop.loc[age_start:upper, col].sum())
+            p = int(pop.filter((pl.col("Age") >= age_start) & (pl.col("Age") <= upper))[col].sum())
         total_pop += p
         deaths += rate * p
     if total_pop <= 0:
         return None
-    return float(deaths) / float(total_pop)
+    return deaths / total_pop
 
 
 def build_mortality_from_wpp(
@@ -634,18 +679,20 @@ def build_mortality_from_wpp(
         ``MortalityFile``-compatible dict with a ``source`` block.
     """
     wpp = load_wpp_mortality(wpp_csv, year=year, sex=sex)
+    pop = load_iran_population(pop_csv) if pop_csv is not None else None
     aggregated: dict[str, float | None] = {}
     for label, _ in POLAND_AGE_BUCKETS:
         if label == "90+":
-            aggregated[label] = _combine_90_plus(wpp, pop_csv, sex=sex)
+            aggregated[label] = _combine_90_plus(wpp, pop, sex=sex)
             continue
-        match = wpp[wpp["poland_label"] == label]
-        if match.empty:
+        match = wpp.filter(pl.col("poland_label") == label)
+        if match.is_empty():
             aggregated[label] = None
         else:
-            aggregated[label] = _to_float(match["value"].iloc[0])
+            value = cast(float, match[WPP_VALUE_COL].first())
+            aggregated[label] = float(value)
 
-    crude = _crude_annual_rate_from_wpp(wpp, pop_csv, sex=sex)
+    crude = _crude_annual_rate_from_wpp(wpp, pop, sex=sex)
 
     return {
         "use_age_specific": True,
@@ -848,13 +895,13 @@ def validate_mortality_table(
 def compare_to_reference(
     iran_table: dict[str, Any],
     reference_path: str | Path,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Side-by-side comparison of Iran vs a reference mortality file.
 
-    Returns a DataFrame with one row per Poland bucket, columns
+    Returns a polars DataFrame with one row per Poland bucket, columns
     ``iran_per_1000``, ``reference_per_1000``, and the ratio
     ``iran_per_1000 / reference_per_1000``. Buckets missing in
-    either side yield ``NaN``.
+    either side yield ``null``.
     """
     ref = json.loads(Path(reference_path).read_text(encoding="utf-8"))
     iran_buckets = iran_table.get("age_specific", {})
@@ -869,39 +916,28 @@ def compare_to_reference(
                 "iran_per_1000": (
                     float(iran_rate) * 1000.0
                     if _is_finite_number(iran_rate)
-                    else math.nan
+                    else None
                 ),
                 "reference_per_1000": (
                     float(ref_rate) * 1000.0
                     if _is_finite_number(ref_rate)
-                    else math.nan
+                    else None
                 ),
-                "ratio_iran_over_ref": _safe_ratio(iran_rate, ref_rate),
+                "ratio_iran_over_ref": (
+                    float(iran_rate) / float(ref_rate)
+                    if _is_finite_number(iran_rate)
+                    and _is_finite_number(ref_rate)
+                    and float(ref_rate) != 0
+                    else None
+                ),
             }
         )
-    return pd.DataFrame(rows)
+    return pl.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _to_float(value: Any) -> float:
-    """Convert a numeric value to a Python ``float``.
-
-    Handles the mismatch between pandas (which sometimes returns
-    Python ``float`` and sometimes ``numpy.float64`` from
-    ``.loc[x]`` / ``.iloc[i]``) by trying ``.item()`` first and
-    falling back to ``float()``. The ``try`` is defensive against
-    types like ``Decimal`` that have ``.item`` but raise.
-    """
-    if hasattr(value, "item"):
-        try:
-            return float(value.item())
-        except (AttributeError, TypeError, ValueError):
-            pass
-    return float(value)
 
 
 def _json_safe(value: Any) -> float | None:
@@ -925,266 +961,3 @@ def _is_finite_number(value: Any) -> bool:
         return math.isfinite(float(value))
     except (TypeError, ValueError):
         return False
-
-
-def _safe_ratio(numerator: Any, denominator: Any) -> float:
-    """Compute ``numerator / denominator`` if both are finite and the
-    denominator is non-zero; otherwise return ``NaN``."""
-    if not (_is_finite_number(numerator) and _is_finite_number(denominator)):
-        return math.nan
-    denom = float(denominator)
-    if denom == 0.0:
-        return math.nan
-    return float(numerator) / denom
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="iran-mortality",
-        description=(
-            "Build an Iran age-specific mortality table matching the "
-            "schema of data/mortality.json (Poland). Three modes:\n"
-            "  - cohort:  q(x) = 1 - P(x+1, t+1) / P(x, t) from two\n"
-            "             Iran_<year>.csv population snapshots.\n"
-            "  - wpp:     read m(x, n) directly from a UN Data Portal\n"
-            "             abridged-life-table export (recommended).\n"
-            "  - merge:   cohort first, then fill null buckets from WPP.\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    src = parser.add_mutually_exclusive_group()
-    src.add_argument(
-        "--from-wpp",
-        dest="from_wpp",
-        action="store_true",
-        help="Read rates directly from a UN WPP abridged-life-table export.",
-    )
-    src.add_argument(
-        "--merge-wpp",
-        dest="merge_wpp",
-        action="store_true",
-        help=(
-            "Compute the cohort table first, then overwrite any null "
-            "buckets with values from the UN WPP export."
-        ),
-    )
-    parser.add_argument(
-        "--wpp-csv",
-        type=Path,
-        default=Path("data/raw/population-un-data-portal-iran.csv"),
-        help="Path to the UN Data Portal Iran mortality export.",
-    )
-    parser.add_argument(
-        "--wpp-year",
-        type=int,
-        default=2024,
-        help="Year of the WPP estimate (default: 2024, latest non-projection).",
-    )
-    parser.add_argument(
-        "--wpp-sex",
-        choices=("Male", "Female", "Both sexes"),
-        default="Male",
-        help="Sex to read from the WPP export (default: Male; "
-             "hemophilia is X-linked so the modeled cohort is male).",
-    )
-    parser.add_argument(
-        "--year-t",
-        type=int,
-        default=None,
-        help="First cohort year (e.g. 2023). Required for cohort / merge modes.",
-    )
-    parser.add_argument(
-        "--year-t1",
-        type=int,
-        default=None,
-        help="Second cohort year (e.g. 2024). Required for cohort / merge modes.",
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=Path("data/raw"),
-        help="Directory containing Iran_<year>.csv files.",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("data/mortality_iran.json"),
-        help="Output JSON path.",
-    )
-    parser.add_argument(
-        "--reference",
-        type=Path,
-        default=Path("data/mortality.json"),
-        help="Optional reference mortality JSON for a side-by-side comparison.",
-    )
-    parser.add_argument(
-        "--sex",
-        choices=("total", "male", "female"),
-        default="male",
-        help="Sex for the cohort method (default: male).",
-    )
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Raise on any validation warning instead of just printing them.",
-    )
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point. Returns the process exit code (0 on success)."""
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    args = _build_parser().parse_args(argv)
-
-    table = _run(args)
-    write_mortality_json(table, args.output)
-    logger.info("Wrote %s", args.output)
-
-    warnings = validate_mortality_table(table, strict=args.strict)
-    if warnings:
-        logger.warning("Validation warnings:")
-        for w in warnings:
-            logger.warning("  - %s", w)
-
-    _print_summary(table)
-    if args.reference and args.reference.exists():
-        _print_comparison(table, args.reference)
-    return 0
-
-
-def _run(args: argparse.Namespace) -> dict[str, Any]:
-    """Dispatch to the chosen method and return the table dict."""
-    if args.from_wpp or args.merge_wpp:
-        if not args.wpp_csv.exists():
-            raise FileNotFoundError(
-                f"Missing WPP export: {args.wpp_csv}. Re-download from "
-                f"the UN Data Portal (Iran, abridged life table, Male, "
-                f"{args.wpp_year}, Median, Model-based Estimates) and "
-                f"save to that path."
-            )
-        pop_csv: Path | None = args.data_dir / f"Iran_{args.wpp_year}.csv"
-        if pop_csv is not None and not pop_csv.exists():
-            logger.warning(
-                "Population CSV %s missing; 90+ will use 95-99 fallback",
-                pop_csv,
-            )
-            pop_csv = None
-        if args.from_wpp:
-            return build_mortality_from_wpp(
-                args.wpp_csv,
-                year=args.wpp_year,
-                sex=args.wpp_sex,
-                pop_csv=pop_csv,
-            )
-        # merge-wpp
-        if args.year_t is None or args.year_t1 is None:
-            raise SystemExit("--merge-wpp requires --year-t and --year-t1")
-        csv_t = args.data_dir / f"Iran_{args.year_t}.csv"
-        csv_t1 = args.data_dir / f"Iran_{args.year_t1}.csv"
-        cohort = build_mortality_table(csv_t, csv_t1, sex=args.sex)
-        merged = merge_cohort_with_wpp(
-            cohort,
-            args.wpp_csv,
-            year=args.wpp_year,
-            sex=args.wpp_sex,
-            pop_csv=pop_csv,
-        )
-        filled = merged["source"].get("wpp_filled", [])
-        logger.info("Filled %d null buckets from WPP: %s", len(filled), filled)
-        return merged
-
-    # Default: cohort method.
-    if args.year_t is None or args.year_t1 is None:
-        raise SystemExit(
-            "Either --from-wpp, --merge-wpp, or both --year-t and "
-            "--year-t1 are required."
-        )
-    csv_t = args.data_dir / f"Iran_{args.year_t}.csv"
-    csv_t1 = args.data_dir / f"Iran_{args.year_t1}.csv"
-    if not csv_t.exists():
-        raise FileNotFoundError(f"Missing {csv_t}")
-    if not csv_t1.exists():
-        raise FileNotFoundError(f"Missing {csv_t1}")
-    table = build_mortality_table(csv_t, csv_t1, sex=args.sex)
-    _warn_unreliable_cohort_ages(csv_t, csv_t1, args.sex)
-    return table
-
-
-def _warn_unreliable_cohort_ages(
-    csv_t: str | Path, csv_t1: str | Path, sex: Sex
-) -> None:
-    """Print a warning listing single-year ages where the cohort grew."""
-    pop_t = load_iran_population(csv_t)
-    pop_t1 = load_iran_population(csv_t1)
-    col = {"total": "Total", "male": "M", "female": "F"}[sex]
-    s_t = pop_t[col].astype(float)
-    s_t1 = pop_t1[col].astype(float)
-    common = s_t.index.intersection(s_t1.index)
-    s_t, s_t1 = s_t.loc[common], s_t1.loc[common]
-    single_year = compute_cohort_mortality(s_t, s_t1)
-    unreliable = sorted(
-        int(a) for a in single_year.index if not math.isfinite(single_year.loc[a])
-    )
-    if unreliable:
-        logger.warning(
-            "Cohort method could not estimate %d single-year ages "
-            "(P(x+1, t+1) > P(x, t) - net in-migration or birth pulse). "
-            "Their buckets will be null; re-run with --merge-wpp to fill "
-            "from UN WPP. Unreliable ages: %s",
-            len(unreliable),
-            unreliable,
-        )
-
-
-def _print_summary(table: dict[str, Any]) -> None:
-    """Print the per-bucket mortality table in per-1000 units."""
-    print("\nIran age-specific mortality (per 1000 person-years):")
-    for label, _ in POLAND_AGE_BUCKETS:
-        rate = table["age_specific"].get(label)
-        per_1000 = (
-            f"{float(rate) * 1000:.3f}"
-            if _is_finite_number(rate)
-            else "  n/a"
-        )
-        print(f"  {label:>7}: {per_1000}")
-    crude = table.get("crude_annual_rate")
-    if _is_finite_number(crude):
-        crude_str = f"{_to_float(crude) * 1000:.3f}"
-    else:
-        crude_str = "  n/a"
-    print(f"  crude   : {crude_str} per 1000 person-years")
-
-
-def _print_comparison(
-    table: dict[str, Any], reference: str | Path
-) -> None:
-    """Print a side-by-side comparison vs a reference mortality file."""
-    print(f"\nComparison vs {reference}:")
-    comparison = compare_to_reference(table, reference)
-    with pd.option_context("display.float_format", "{:.3f}".format):
-        print(
-            comparison.to_string(
-                index=False,
-                formatters={
-                    "iran_per_1000": _format_optional,
-                    "reference_per_1000": "{:.3f}".format,
-                    "ratio_iran_over_ref": _format_optional,
-                },
-                na_rep="  n/a",
-            )
-        )
-
-
-def _format_optional(value: float) -> str:
-    if value is None or (isinstance(value, float) and not math.isfinite(value)):
-        return "  n/a"
-    return f"{value:.3f}"
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

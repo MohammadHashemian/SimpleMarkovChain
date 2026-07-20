@@ -55,6 +55,7 @@ dependencies = [
   "fastparquet",
   "jinja2",
   "openpyxl",
+  "polars",
 ]
 
 # Optional dependency groups
