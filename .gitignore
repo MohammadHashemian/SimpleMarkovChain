@@ -58,3 +58,6 @@ results/summary.md
 # OS junk
 Thumbs.db
 .DS_Store
+
+# Document drafts
+*.docx
