@@ -1,6 +1,21 @@
 from notebook_tools.calibration import build_calibration_report, classify_calibration
 from notebook_tools.dataframe_builders import build_df, calculate_state_occupation
 from notebook_tools.display import show
+from notebook_tools.iran_mortality import (
+    POLAND_AGE_BUCKETS,
+    WPP_AGE_START_TO_POLAND,
+    WPP_OPEN_AGE_STARTS,
+    aggregate_to_poland_buckets,
+    build_mortality_from_wpp,
+    build_mortality_table,
+    compare_to_reference,
+    compute_cohort_mortality,
+    compute_crude_annual_rate,
+    load_iran_population,
+    load_wpp_mortality,
+    merge_cohort_with_wpp,
+    write_mortality_json,
+)
 from notebook_tools.parameter_sets import HemophiliaParamRepo
 from notebook_tools.scenario_helpers import (
     define_scenario_extension,
@@ -22,6 +37,19 @@ __all__ = [
     "calculate_state_occupation",
     "build_df",
     "show",
+    "POLAND_AGE_BUCKETS",
+    "WPP_AGE_START_TO_POLAND",
+    "WPP_OPEN_AGE_STARTS",
+    "aggregate_to_poland_buckets",
+    "build_mortality_from_wpp",
+    "build_mortality_table",
+    "compare_to_reference",
+    "compute_cohort_mortality",
+    "compute_crude_annual_rate",
+    "load_iran_population",
+    "load_wpp_mortality",
+    "merge_cohort_with_wpp",
+    "write_mortality_json",
     "HemophiliaParamRepo",
     "insert_scenario",
     "parse_scenario",

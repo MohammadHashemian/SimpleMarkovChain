@@ -16,7 +16,9 @@ from persistence.context import ModelContext
 
 
 class HemophiliaParamRepo:
-    def __init__(self, root: Path, cache_path: Path, context: Optional[ModelContext] = None):
+    def __init__(
+        self, root: Path, cache_path: Path, context: Optional[ModelContext] = None
+    ):
         self.root = root
         self.cache_path = cache_path
         self.ows_params_keys = [
