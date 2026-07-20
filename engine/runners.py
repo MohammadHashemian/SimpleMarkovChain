@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import copy
+import os
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,7 +29,10 @@ def _get_scenario_name(scenario: Any) -> str:
 def _worker_entry(args):
     worker_id, input_data, chain, context, worker_func, run_id, scenario = args
 
-    model = copy.deepcopy(chain)
+    # The chain is pickled per-worker by the spawn-context pool, so each worker
+    # already has its own private Chain instance. Deepcopying it again was
+    # redundant work paid on every iteration.
+    model = chain
     ctx = context  # immutable → safe
 
     output = worker_func(
@@ -48,6 +51,16 @@ def _worker_entry(args):
         input_data=input_data,
         output=output,
     )
+
+
+def _optimal_chunksize(n_inputs: int) -> int:
+    """Heuristic for imap_unordered chunksize: keep workers fed without
+    ballooning per-task IPC payload. Targets ~4x more chunks than workers."""
+    if n_inputs <= 1:
+        return 1
+    n_workers = max(1, (os.cpu_count() or 1))
+    target_chunks = max(n_workers * 4, 1)
+    return max(1, n_inputs // target_chunks)
 
 
 class Runner(Generic[T, U]):
@@ -95,7 +108,10 @@ class Runner(Generic[T, U]):
         with PoolClass() as pool:
 
             if mode == "std":
-                iterator = pool.imap_unordered(_worker_entry, args_list)
+                chunksize = _optimal_chunksize(n_inputs)
+                iterator = pool.imap_unordered(
+                    _worker_entry, args_list, chunksize=chunksize
+                )
             elif mode == "pathos":
                 iterator = pool.uimap(_worker_entry, args_list)
             else:

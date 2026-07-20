@@ -11,6 +11,8 @@ import numpy as np
 
 from engine.interfaces import NoOpModifier, TransitionModifier
 
+_NOOP_MODIFIER = NoOpModifier()
+
 T = TypeVar("T")
 U = TypeVar("U")
 
@@ -72,8 +74,10 @@ class MarkovChains:
         self.chains = chains
         self._chains_map = {chain.name: chain for chain in chains}
         self.conditions = conditions or {}
+        self._has_conditions = bool(self.conditions)
         self.worker_kwargs = worker_kwargs or {}
-        self.transition_modifier = transition_modifier or NoOpModifier()
+        self.transition_modifier = transition_modifier or _NOOP_MODIFIER
+        self._is_noop_modifier = type(self.transition_modifier) is NoOpModifier
 
         self.absorbing_states = set(absorbing_states) if absorbing_states else set()
         self._auto_detect_absorbing = absorbing_states is None
@@ -111,28 +115,38 @@ class MarkovChains:
                         f"Absorbing state '{state}' not found in any chain"
                     )
 
+        # Pre-compute boolean absorbing mask per chain: states[i] is absorbing -> mask[i] = True
+        # Eliminates per-step chain.states.index(state) + np.isclose checks in _is_absorbing.
+        self._absorbing_mask: dict[str, np.ndarray] = {}
+        for chain in self.chains:
+            n = len(chain.states)
+            mask = np.zeros(n, dtype=bool)
+            matrix = chain.matrix
+            for i in range(n):
+                row = matrix[i]
+                is_user_absorbing = chain.states[i] in self.absorbing_states
+                is_auto_absorbing = (
+                    self._auto_detect_absorbing
+                    and len(row) > 0
+                    and np.isclose(row[i], 1.0, rtol=1e-8)
+                    and np.allclose(
+                        row,
+                        np.array([1.0 if j == i else 0.0 for j in range(n)]),
+                        rtol=1e-8,
+                    )
+                )
+                if is_user_absorbing or is_auto_absorbing:
+                    mask[i] = True
+            self._absorbing_mask[chain.name] = mask
+
     def _is_absorbing(self, state: str, chain_name: str) -> bool:
-        """Check if a state is absorbing in the current chain."""
-        if state in self.absorbing_states:
-            return True
-
-        if not self._auto_detect_absorbing:
-            return False
-
+        """Check if a state is absorbing in the current chain (mask lookup)."""
         chain = self._chains_map[chain_name]
         try:
             idx = chain.states.index(state)
-            row = chain.matrix[idx]
-            # True absorbing state: probability 1.0 to stay in itself
-            return (
-                len(row) > 0
-                and np.isclose(row[idx], 1.0, rtol=1e-8)
-                and np.allclose(
-                    row, [1.0 if i == idx else 0.0 for i in range(len(row))], rtol=1e-8
-                )
-            )
-        except (ValueError, IndexError):
+        except ValueError:
             return False
+        return bool(self._absorbing_mask[chain_name][idx])
 
     def _worker_kwargs_dict(self) -> dict:
         """Return worker kwargs as a dict whether originally a dict or a dataclass/object."""
@@ -146,16 +160,18 @@ class MarkovChains:
             except Exception:
                 return {}
 
-    def _compute_rewards(self, step: int, current_state: str) -> None:
+    def _compute_rewards(
+        self, step: int, current_state: str, base_kwargs: dict[str, Any]
+    ) -> None:
         """Compute store and reward functions for current step."""
-        reward_kwargs = {}
+        reward_kwargs: dict[str, Any] = {}
         # Store functions first
         for arg_name, func in self._store.items():
             res = func(
                 state=current_state,
                 chain=self._current_chain_name,
                 step=step,
-                **self._worker_kwargs_dict(),
+                **base_kwargs,
                 **reward_kwargs,
             )
             reward_kwargs[arg_name] = res
@@ -168,7 +184,7 @@ class MarkovChains:
                 state=current_state,
                 chain=self._current_chain_name,
                 **reward_kwargs,
-                **self._worker_kwargs_dict(),
+                **base_kwargs,
             )
             self._rewards[func.__name__].append(reward)
 
@@ -196,65 +212,77 @@ class MarkovChains:
         states = current_chain.states
         transitions = current_chain.matrix
 
+        # Cache worker kwargs once per walk: avoids re-evaluating the dataclass
+        # -> dict conversion on every store/reward/condition/modifier call.
+        base_kwargs = self._worker_kwargs_dict()
+
+        # Bind hot attributes to locals for faster attribute access in the loop.
+        absorbing_mask = self._absorbing_mask
+        _chains_map = self._chains_map
+        _compute_rewards = self._compute_rewards
+        _is_noop_modifier = self._is_noop_modifier
+        _has_conditions = self._has_conditions
+        conditions_items = self.conditions.items
+        current_chain_name = self._current_chain_name
+
         for step in range(steps + 1):
             current_state = states[current_state_idx]
             yield current_state
 
-            # Check for absorption
-            if self._is_absorbing(current_state, self._current_chain_name):
-                self._compute_rewards(step, current_state)
+            # Check for absorption (mask lookup, O(1))
+            if bool(absorbing_mask[current_chain_name][current_state_idx]):
+                _compute_rewards(step, current_state, base_kwargs)
                 self.absorbed_at = step
                 self.absorbed_state = current_state
                 self.current_state_idx = current_state_idx
                 return  # Early exit on absorption
 
             # Normal step: compute rewards
-            self._compute_rewards(step, current_state)
+            _compute_rewards(step, current_state, base_kwargs)
 
             if step >= steps:
                 break
 
-            # Chain switching
+            # Chain switching (skipped entirely when no conditions defined)
             switched = False
-            for chain_name, condition in self.conditions.items():
-                if chain_name != self._current_chain_name and condition(
-                    step,
-                    current_state,
-                    self._current_chain_name,
-                    **self._worker_kwargs_dict(),
-                ):
-                    self._current_chain_name = chain_name
-                    current_chain = self._get_current_chain()
-                    states = current_chain.states
-                    transitions = current_chain.matrix
-                    try:
-                        current_state_idx = states.index(current_state)
-                    except ValueError:
-                        current_state_idx = 0
-                    switched = True
-                    break
+            if _has_conditions:
+                for chain_name, condition in conditions_items():
+                    if chain_name != current_chain_name and condition(
+                        step,
+                        current_state,
+                        current_chain_name,
+                        **base_kwargs,
+                    ):
+                        current_chain_name = chain_name
+                        self._current_chain_name = chain_name
+                        current_chain = _chains_map[chain_name]
+                        states = current_chain.states
+                        transitions = current_chain.matrix
+                        try:
+                            current_state_idx = states.index(current_state)
+                        except ValueError:
+                            current_state_idx = 0
+                        switched = True
+                        break
 
             if switched:
                 continue
 
-            # Transition with modifier
-            base_probs = transitions[current_state_idx]
-            adjusted_probs = self.transition_modifier.adjust_transition(
-                base_probs=base_probs,
-                current_state=current_state,
-                current_chain_name=self._current_chain_name,
-                step=step,
-                states=states,
-                **self._worker_kwargs_dict(),
-            )
-
-            # Safety normalization
-            # adjusted_probs = np.array(adjusted_probs, dtype=float)
-            # total = adjusted_probs.sum()
-            # if not np.isclose(total, 1.0, rtol=1e-8):
-            #     adjusted_probs /= total
-
-            current_state_idx = np.random.choice(len(states), p=adjusted_probs)
+            # Transition with modifier (skipped entirely for NoOpModifier)
+            if _is_noop_modifier:
+                base_probs = transitions[current_state_idx]
+                current_state_idx = np.random.choice(len(states), p=base_probs)
+            else:
+                base_probs = transitions[current_state_idx]
+                adjusted_probs = self.transition_modifier.adjust_transition(
+                    base_probs=base_probs,
+                    current_state=current_state,
+                    current_chain_name=current_chain_name,
+                    step=step,
+                    states=states,
+                    **base_kwargs,
+                )
+                current_state_idx = np.random.choice(len(states), p=adjusted_probs)
 
         self.current_state_idx = current_state_idx
 
