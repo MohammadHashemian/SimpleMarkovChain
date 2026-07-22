@@ -1,7 +1,11 @@
-from analysis.distributions.base import ConvergenceDiagnostics, DiagnosticsProtocol, Distribution
-from analysis.distributions.bayesian import Bayesian
-from analysis.distributions.mixture import DirichletMixture, MixtureOfStudies
-from analysis.distributions.simple import (
+from app.analysis.distributions.base import (
+    ConvergenceDiagnostics,
+    DiagnosticsProtocol,
+    Distribution,
+)
+from app.analysis.distributions.bayesian import Bayesian
+from app.analysis.distributions.mixture import DirichletMixture, MixtureOfStudies
+from app.analysis.distributions.simple import (
     BetaFromMeanSD,
     Constant,
     GammaFromMeanCV,

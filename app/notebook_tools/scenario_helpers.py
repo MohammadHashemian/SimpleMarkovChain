@@ -2,10 +2,10 @@ from dataclasses import Field
 
 import numpy as np
 
-from analysis.distributions import Constant
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameters import Parameter
-from domain.scenario import Scenario
+from app.analysis.distributions import Constant
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameters import Parameter
+from app.domain.scenario import Scenario
 
 
 def insert_scenario(scenarios: list[Scenario], pair: list[Scenario]):

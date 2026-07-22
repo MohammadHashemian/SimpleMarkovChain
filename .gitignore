@@ -1,4 +1,5 @@
 data/raw/private-*
+app/data/raw/private-*
 /__pycache__
 */__pycache__
 .pytest_cache
@@ -24,27 +25,37 @@ playground.py
 # IDE / Editor
 .vscode/
 
-# Logs
+# Logs (legacy top-level + new use-case location)
 logs/
+app/logs/
 
-# Generated outputs directory
+# Generated outputs (legacy top-level + new use-case location)
 outputs/
 outputs/transitions/*
+app/outputs/
+app/outputs/transitions/*
 
 # Cached / generated data
 cache/
+app/cache/
 *.pkl
 *.parquet
 
-# Generated outputs
+# Generated outputs (legacy top-level + new use-case location)
 results/*.png
 results/*.jpg
 results/*.jpeg
 results/markov_chain
 results/summary.md
+app/results/*.png
+app/results/*.jpg
+app/results/*.jpeg
+app/results/markov_chain
+app/results/summary.md
 
 # Jupyter notebooks
 .ipynb_checkpoints/
+app/notebooks/.ipynb_checkpoints/
 
 # Type checking cache
 .mypy_cache/

@@ -4,12 +4,12 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
-from domain.enums import HealthStates
-from domain.inputs import ModelInput
-from domain.worker import ModelOutput
+from app.domain.enums import HealthStates
+from app.domain.inputs import ModelInput
+from app.domain.worker import ModelOutput
+from app.notebook_tools.scenario_helpers import parse_scenario
+from app.persistence.context import ModelContext
 from engine.runners import SimulationResult
-from notebook_tools.scenario_helpers import parse_scenario
-from persistence.context import ModelContext
 from utils.logging import setup_root_logger
 
 columns = [

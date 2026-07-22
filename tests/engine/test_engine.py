@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from domain.modifiers import HemophiliaMortalityModifier
+from app.domain.modifiers import HemophiliaMortalityModifier
 from engine.chains import (
     Chain,
     MarkovChains,

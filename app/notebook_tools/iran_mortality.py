@@ -110,7 +110,7 @@ from typing import Any, Literal, cast
 import polars as pl
 from pydantic import ValidationError
 
-from persistence.schemas.mortality import MortalityFile
+from app.persistence.schemas.mortality import MortalityFile
 
 __version__ = "1.0.0"
 __all__ = [

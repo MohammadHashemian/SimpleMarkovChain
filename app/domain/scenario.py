@@ -4,9 +4,9 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameters import Parameter
-from domain.enums import Regime
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameters import Parameter
+from app.domain.enums import Regime
 
 T = TypeVar("T")
 

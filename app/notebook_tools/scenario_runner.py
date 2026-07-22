@@ -8,13 +8,13 @@ from typing import Literal
 import enlighten
 import pandas as pd
 
-from domain.inputs import ModelInput
-from domain.scenario import ScenarioBundle
+from app.domain.inputs import ModelInput
+from app.domain.scenario import ScenarioBundle
+from app.notebook_tools.dataframe_builders import build_df
+from app.notebook_tools.scenario_helpers import pair_scenarios
+from app.persistence.context import ModelContext
 from engine.chains import Chain
 from engine.runners import ScenarioRunner, SimulationResult
-from notebook_tools.dataframe_builders import build_df
-from notebook_tools.scenario_helpers import pair_scenarios
-from persistence.context import ModelContext
 from utils.logging import setup_root_logger
 
 

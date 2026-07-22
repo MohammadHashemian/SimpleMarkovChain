@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from analysis.psa.parameters import Parameter
+from app.analysis.psa.parameters import Parameter
 
 
 @dataclass

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from analysis.distributions import (
+from app.analysis.distributions import (
     Bayesian,
     BetaFromMeanSD,
     Constant,
@@ -11,11 +11,11 @@ from analysis.distributions import (
     MixtureOfStudies,
     TriangularDist,
 )
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameter_resolver import ParameterResolver
-from analysis.psa.parameters import Parameter
-from analysis.psa.sampler import PSASampler
-from persistence.schemas.clinicals import StudyEstimate
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameter_resolver import ParameterResolver
+from app.analysis.psa.parameters import Parameter
+from app.analysis.psa.sampler import PSASampler
+from app.persistence.schemas.clinicals import StudyEstimate
 
 SEED = 42
 
@@ -249,7 +249,7 @@ class TestParameterResolver:
         assert np.allclose(resolved["spontaneous_bleeding_rate"], [22.0 * (1 - 0.3 - 0.05), 15.0 * (1 - 0.25 - 0.03)])
 
     def test_build_single_returns_model_input(self):
-        from domain.inputs import ModelInput
+        from app.domain.inputs import ModelInput
         resolved = {
             "cycles": np.array([520]),
             "bleeding_rate": np.array([22.0]),

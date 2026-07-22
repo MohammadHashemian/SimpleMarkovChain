@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from domain.inputs import ModelInput
+from app.domain.inputs import ModelInput
 
 
 class ParameterResolver:

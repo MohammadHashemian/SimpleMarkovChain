@@ -1,7 +1,7 @@
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameter_resolver import ParameterResolver
-from analysis.psa.parameters import Parameter
-from analysis.psa.sampler import PSASampler
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameter_resolver import ParameterResolver
+from app.analysis.psa.parameters import Parameter
+from app.analysis.psa.sampler import PSASampler
 
 __all__ = [
     "ParameterSet",

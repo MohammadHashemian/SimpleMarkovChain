@@ -1,4 +1,4 @@
-from analysis.distributions import (
+from app.analysis.distributions import (
     Bayesian,
     BetaFromMeanSD,
     Constant,

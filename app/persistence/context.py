@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import ClassVar
 
-from persistence.loaders import (
+from app.persistence.loaders import (
     load_typed_json,
     parse_clinical,
     parse_cost_file,
@@ -10,18 +10,18 @@ from persistence.loaders import (
     parse_simulation,
     parse_utilities,
 )
-from persistence.schemas.clinicals import ClinicalFile
-from persistence.schemas.costs import CostFile
-from persistence.schemas.economic_policy import EconomicPolicyFile
-from persistence.schemas.mortality import MortalityFile
-from persistence.schemas.simulation import SimulationFile
-from persistence.schemas.utilities import UtilityFile
+from app.persistence.schemas.clinicals import ClinicalFile
+from app.persistence.schemas.costs import CostFile
+from app.persistence.schemas.economic_policy import EconomicPolicyFile
+from app.persistence.schemas.mortality import MortalityFile
+from app.persistence.schemas.simulation import SimulationFile
+from app.persistence.schemas.utilities import UtilityFile
 from utils.path_utils import get_project_root
 
 _MORTALITY_FILE_BY_SOURCE: dict[str, str] = {
-    "iran": "data/mortality_iran.json",
-    "poland": "data/mortality.json",
-    "default": "data/mortality.json",
+    "iran": "app/data/mortality_iran.json",
+    "poland": "app/data/mortality.json",
+    "default": "app/data/mortality.json",
 }
 
 
@@ -40,19 +40,19 @@ class ModelContext:
     def load(cls) -> "ModelContext":
         root = cls.PROJECT_ROOT
         simulation = load_typed_json(
-            root / "data/simulation.json", parse_simulation
+            root / "app/data/simulation.json", parse_simulation
         )
         mort_rel = _MORTALITY_FILE_BY_SOURCE.get(
             simulation.mortality.source, _MORTALITY_FILE_BY_SOURCE["default"]
         )
         return cls(
             simulation=simulation,
-            clinical=load_typed_json(root / "data/clinical.json", parse_clinical),
-            costs=load_typed_json(root / "data/economic.json", parse_cost_file),
-            utilities=load_typed_json(root / "data/utilities.json", parse_utilities),
+            clinical=load_typed_json(root / "app/data/clinical.json", parse_clinical),
+            costs=load_typed_json(root / "app/data/economic.json", parse_cost_file),
+            utilities=load_typed_json(root / "app/data/utilities.json", parse_utilities),
             mortality=load_typed_json(root / mort_rel, parse_mortality),
             economic_policy=load_typed_json(
-                root / "data/economic_policy.json", parse_economic_policy
+                root / "app/data/economic_policy.json", parse_economic_policy
             ),
         )
 

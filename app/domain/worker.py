@@ -3,28 +3,28 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from domain.enums import Regime
-from domain.inputs import ModelInput
+from app.domain.enums import Regime
+from app.domain.inputs import ModelInput
 
-# from visualization.visualization import visualize_matrix
-from domain.rewards.hemophilia import (
+# from app.visualization.visualization import visualize_matrix
+from app.domain.rewards.hemophilia import (
     consumption,
     event_count,
     make_pettersson_score,
     utility,
     weight,
 )
-from domain.rewards.hemophilia_vectorized import (
+from app.domain.rewards.hemophilia_vectorized import (
     VECTORIZED_REWARD_FUNCS,
     VECTORIZED_STORE_FUNCS,
     register_state_index,
 )
-from domain.scenario import Scenario
-from domain.transitions import AgeBasedMortalityModifier, build_transition_matrix
+from app.domain.scenario import Scenario
+from app.domain.transitions import AgeBasedMortalityModifier, build_transition_matrix
+from app.persistence.context import ModelContext
+from app.persistence.schemas.utilities import StateUtilities
 from engine.chains import Chain, MarkovChains
 from engine.vectorized import BatchMarkovChain, BatchResult
-from persistence.context import ModelContext
-from persistence.schemas.utilities import StateUtilities
 
 
 def setup_rewards(

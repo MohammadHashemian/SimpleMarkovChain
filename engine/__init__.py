@@ -4,6 +4,7 @@ from engine.results import MarkovResult
 from engine.runners import Runner, ScenarioRunner, SimulationResult
 from engine.transitions import (
     CTMCTransitionGenerator,
+    DTMCTransitionGenerator,
     HybridTransitionGenerator,
     IndependentHazardTransitionGenerator,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "SimulationResult",
     "Runner",
     "ScenarioRunner",
+    "DTMCTransitionGenerator",
     "HybridTransitionGenerator",
     "CTMCTransitionGenerator",
     "IndependentHazardTransitionGenerator",

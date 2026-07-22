@@ -2,10 +2,10 @@ from typing import Any
 
 import numpy as np
 
-from domain.inputs import ModelInput
+from app.domain.inputs import ModelInput
+from app.persistence.schemas.mortality import MortalityFile
 from engine.interfaces import TransitionModifier
 from engine.transitions import HybridTransitionGenerator
-from persistence.schemas.mortality import MortalityFile
 from utils.logging import setup_root_logger
 from utils.math import prob_at_least_one, to_weekly
 

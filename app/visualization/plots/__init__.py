@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from visualization.plots.body_weight import plot_body_weight
+from app.visualization.plots.body_weight import plot_body_weight
 
 
 def apply_grid(

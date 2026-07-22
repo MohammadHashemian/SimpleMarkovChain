@@ -1,4 +1,4 @@
-from domain.enums import ArthropathySeverity
+from app.domain.enums import ArthropathySeverity
 
 
 def pettersson_to_severity(score: int) -> ArthropathySeverity:

@@ -27,10 +27,10 @@ jobs:
           pip install -e ".[dev,notebooks,ml]"
 
       - name: Lint with Ruff
-        run: ruff check engine/ domain/ analysis/ persistence/ utils/ visualization/ notebook_tools/ tests/
+        run: ruff check engine/ app/ utils/ tests/
 
       - name: Test with pytest
         run: pytest tests/ -v --tb=short
 
       - name: Seed reproducibility smoke test
-        run: python -m notebook_tools.smoke
+        run: python -m app.notebook_tools.smoke

@@ -23,16 +23,16 @@ import sys
 
 import numpy as np
 
-from analysis.distributions import Constant
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameter_resolver import ParameterResolver
-from analysis.psa.parameters import Parameter
-from analysis.psa.sampler import PSASampler
-from domain.enums import HealthStates, Regime
-from domain.scenario import Scenario
-from domain.worker import worker_function_batch
+from app.analysis.distributions import Constant
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameter_resolver import ParameterResolver
+from app.analysis.psa.parameters import Parameter
+from app.analysis.psa.sampler import PSASampler
+from app.domain.enums import HealthStates, Regime
+from app.domain.scenario import Scenario
+from app.domain.worker import worker_function_batch
+from app.persistence.context import ModelContext
 from engine.chains import Chain
-from persistence.context import ModelContext
 from utils import stable_hash
 
 # Tiny but non-trivial parameter set so the test exercises both the sampler

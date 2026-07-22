@@ -1,4 +1,4 @@
-from persistence.schemas.clinicals import (
+from app.persistence.schemas.clinicals import (
     ABREvidence,
     ClinicalFile,
     ClinicalScoring,
@@ -15,12 +15,12 @@ from persistence.schemas.clinicals import (
     Utilities,
     UtilityDecrements,
 )
-from persistence.schemas.costs import Assumption, CostFile, CostItem, Currency, Pricing
-from persistence.schemas.economic_policy import EconomicPolicyFile, GDPPerCapita, WTPMultiplier
-from persistence.schemas.mortality import MortalityFile
-from persistence.schemas.results import HemophiliaOutput
-from persistence.schemas.simulation import PSA, Discounting, Environment, SimulationFile, Time
-from persistence.schemas.utilities import EventDisutilities, StateUtilities, UtilityFile
+from app.persistence.schemas.costs import Assumption, CostFile, CostItem, Currency, Pricing
+from app.persistence.schemas.economic_policy import EconomicPolicyFile, GDPPerCapita, WTPMultiplier
+from app.persistence.schemas.mortality import MortalityFile
+from app.persistence.schemas.results import HemophiliaOutput
+from app.persistence.schemas.simulation import PSA, Discounting, Environment, SimulationFile, Time
+from app.persistence.schemas.utilities import EventDisutilities, StateUtilities, UtilityFile
 
 __all__ = [
     "EventFractions",

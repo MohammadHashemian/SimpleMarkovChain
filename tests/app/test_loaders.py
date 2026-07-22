@@ -7,11 +7,11 @@ logger = logging.getLogger("__pytest__")
 
 
 def test_costs_data():
-    from persistence.loaders import load_typed_json, parse_cost_file
-    from persistence.schemas.costs import CostFile
+    from app.persistence.loaders import load_typed_json, parse_cost_file
+    from app.persistence.schemas.costs import CostFile
     from utils.path_utils import get_project_root
 
-    file_path = get_project_root() / "data" / "economic.json"
+    file_path = get_project_root() / "app/data" / "economic.json"
 
     result = load_typed_json(file_path, parse_cost_file)
 
@@ -30,11 +30,11 @@ def test_costs_data():
 
 
 def test_clinical_data():
-    from persistence.loaders import load_typed_json, parse_clinical
-    from persistence.schemas.clinicals import ClinicalFile
+    from app.persistence.loaders import load_typed_json, parse_clinical
+    from app.persistence.schemas.clinicals import ClinicalFile
     from utils.path_utils import get_project_root
 
-    file_path = get_project_root() / "data" / "clinical.json"
+    file_path = get_project_root() / "app/data" / "clinical.json"
 
     result = load_typed_json(file_path, parse_clinical)
 
@@ -43,11 +43,11 @@ def test_clinical_data():
 
 
 def test_utilities_data():
-    from persistence.loaders import load_typed_json, parse_utilities
-    from persistence.schemas.utilities import UtilityFile
+    from app.persistence.loaders import load_typed_json, parse_utilities
+    from app.persistence.schemas.utilities import UtilityFile
     from utils.path_utils import get_project_root
 
-    file_path = get_project_root() / "data" / "utilities.json"
+    file_path = get_project_root() / "app/data" / "utilities.json"
 
     result = load_typed_json(file_path, parse_utilities)
 
@@ -56,11 +56,11 @@ def test_utilities_data():
 
 
 def test_simulation_data():
-    from persistence.loaders import load_typed_json, parse_simulation
-    from persistence.schemas.simulation import SimulationFile
+    from app.persistence.loaders import load_typed_json, parse_simulation
+    from app.persistence.schemas.simulation import SimulationFile
     from utils.path_utils import get_project_root
 
-    file_path = get_project_root() / "data" / "simulation.json"
+    file_path = get_project_root() / "app/data" / "simulation.json"
 
     result = load_typed_json(file_path, parse_simulation)
 
@@ -69,11 +69,11 @@ def test_simulation_data():
 
 
 def test_mortality_data():
-    from persistence.loaders import load_typed_json, parse_mortality
-    from persistence.schemas.mortality import MortalityFile
+    from app.persistence.loaders import load_typed_json, parse_mortality
+    from app.persistence.schemas.mortality import MortalityFile
     from utils.path_utils import get_project_root
 
-    file_path = get_project_root() / "data" / "mortality.json"
+    file_path = get_project_root() / "app/data" / "mortality.json"
 
     result = load_typed_json(file_path, parse_mortality)
 
@@ -83,11 +83,11 @@ def test_mortality_data():
 
 def test_simulation_mortality_source_defaults_to_iran():
     """simulation.json should declare mortality.source and default to iran."""
-    from persistence.loaders import load_typed_json, parse_simulation
+    from app.persistence.loaders import load_typed_json, parse_simulation
     from utils.path_utils import get_project_root
 
     sim = load_typed_json(
-        get_project_root() / "data" / "simulation.json", parse_simulation
+        get_project_root() / "app/data" / "simulation.json", parse_simulation
     )
     assert sim.mortality.source == "iran"
 
@@ -95,7 +95,7 @@ def test_simulation_mortality_source_defaults_to_iran():
 def test_model_context_loads_iran_mortality_by_default():
     """ModelContext.load() must read simulation.mortality.source and load
     data/mortality_iran.json when the source is 'iran'."""
-    from persistence.context import ModelContext
+    from app.persistence.context import ModelContext
 
     ctx = ModelContext.load()
     assert ctx.simulation.mortality.source == "iran"
@@ -116,7 +116,7 @@ def test_mortality_source_can_be_overridden(tmp_path, monkeypatch):
     placeholder table, not the Iran one."""
     import json
 
-    from persistence.context import ModelContext
+    from app.persistence.context import ModelContext
 
     # Write a temp simulation.json that asks for the poland source.
     sim_path = tmp_path / "simulation.json"
@@ -142,12 +142,12 @@ def test_mortality_source_can_be_overridden(tmp_path, monkeypatch):
     real_root = ModelContext.PROJECT_ROOT
     monkeypatch.setattr(ModelContext, "PROJECT_ROOT", real_root)
     monkeypatch.setattr(
-        "persistence.context.get_project_root", lambda: real_root
+        "app.persistence.context.get_project_root", lambda: real_root
     )
 
     # Patch the loader to use our temp simulation.json.
-    import persistence.context as ctx_mod
-    import persistence.loaders as loaders
+    import app.persistence.context as ctx_mod
+    import app.persistence.loaders as loaders
 
     orig_load = loaders.load_typed_json
 

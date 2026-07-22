@@ -1,5 +1,5 @@
-from persistence.context import ModelContext
-from persistence.loaders import (
+from app.persistence.context import ModelContext
+from app.persistence.loaders import (
     load_json,
     load_typed_json,
     parse_clinical,
@@ -9,7 +9,7 @@ from persistence.loaders import (
     parse_simulation,
     parse_utilities,
 )
-from persistence.logging_utils import log_jupyter_outputs_to_file
+from app.persistence.logging_utils import log_jupyter_outputs_to_file
 
 __all__ = [
     "ModelContext",

@@ -218,9 +218,9 @@ def test_aggregate_qaly_is_continuous_not_integer():
     # Simulate a (n_iters=3, n_steps+1=4) utility trace with non-integer
     # sum, mimicking what walk_batch produces after the discount + utility
     # pipeline.
-    from domain.enums import HealthStates, Regime
-    from domain.inputs import ModelInput
-    from domain.worker import _aggregate_vectorized_output
+    from app.domain.enums import HealthStates, Regime
+    from app.domain.inputs import ModelInput
+    from app.domain.worker import _aggregate_vectorized_output
     from engine.vectorized import BatchResult
 
     states = [s.value for s in HealthStates]

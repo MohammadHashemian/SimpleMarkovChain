@@ -871,10 +871,10 @@ class TestDomainTransitionMatrixBuilder:
         """Smoke test: build the real hemophilia transition matrix and
         confirm it is row-stochastic on the actual data files.
         """
-        from domain.enums import HealthStates
-        from domain.inputs import ModelInput
-        from domain.transitions import build_transition_matrix
-        from persistence.context import ModelContext
+        from app.domain.enums import HealthStates
+        from app.domain.inputs import ModelInput
+        from app.domain.transitions import build_transition_matrix
+        from app.persistence.context import ModelContext
 
         # Just load the context to ensure data files are reachable.
         ModelContext.load()

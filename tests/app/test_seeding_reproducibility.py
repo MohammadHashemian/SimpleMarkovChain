@@ -9,12 +9,12 @@ provided seed is honoured across the full pipeline.
 import numpy as np
 import pytest
 
-from domain.enums import HealthStates, Regime
-from domain.inputs import ModelInput
-from domain.scenario import Scenario
-from domain.worker import worker_function, worker_function_batch
+from app.domain.enums import HealthStates, Regime
+from app.domain.inputs import ModelInput
+from app.domain.scenario import Scenario
+from app.domain.worker import worker_function, worker_function_batch
+from app.persistence.context import ModelContext
 from engine.chains import Chain
-from persistence.context import ModelContext
 
 # Eight states, in the order expected by ``build_transition_matrix`` and the
 # vectorized reward registries.

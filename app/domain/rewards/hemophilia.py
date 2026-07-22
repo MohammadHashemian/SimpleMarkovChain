@@ -1,6 +1,6 @@
 from scipy.stats import poisson
 
-from domain.enums import HealthStates, Regime
+from app.domain.enums import HealthStates, Regime
 from utils.math import build_zero_truncated_poisson_probs, cal_body_weight
 
 

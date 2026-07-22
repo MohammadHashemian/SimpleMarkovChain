@@ -3,15 +3,15 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis.distributions import (
+from app.analysis.distributions import (
     BetaFromMeanSD,
     Constant,
     GammaFromMeanCV,
     TriangularDist,
 )
-from analysis.psa.models import ParameterSet
-from analysis.psa.parameters import Parameter
-from persistence.context import ModelContext
+from app.analysis.psa.models import ParameterSet
+from app.analysis.psa.parameters import Parameter
+from app.persistence.context import ModelContext
 
 
 class HemophiliaParamRepo:

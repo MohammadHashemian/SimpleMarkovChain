@@ -1,7 +1,7 @@
-from notebook_tools.calibration import build_calibration_report, classify_calibration
-from notebook_tools.dataframe_builders import build_df, calculate_state_occupation
-from notebook_tools.display import show
-from notebook_tools.iran_mortality import (
+from app.notebook_tools.calibration import build_calibration_report, classify_calibration
+from app.notebook_tools.dataframe_builders import build_df, calculate_state_occupation
+from app.notebook_tools.display import show
+from app.notebook_tools.iran_mortality import (
     POLAND_AGE_BUCKETS,
     WPP_AGE_START_TO_POLAND,
     WPP_OPEN_AGE_STARTS,
@@ -18,8 +18,8 @@ from notebook_tools.iran_mortality import (
     validate_mortality_table,
     write_mortality_json,
 )
-from notebook_tools.parameter_sets import HemophiliaParamRepo
-from notebook_tools.scenario_helpers import (
+from app.notebook_tools.parameter_sets import HemophiliaParamRepo
+from app.notebook_tools.scenario_helpers import (
     define_scenario_extension,
     extend_scenario,
     get_base_pair_key,
@@ -30,8 +30,8 @@ from notebook_tools.scenario_helpers import (
     parse_scenario,
     split_tornado_extensions,
 )
-from notebook_tools.scenario_runner import batch_generator, run_scenarios_in_batches
-from notebook_tools.storage import store
+from app.notebook_tools.scenario_runner import batch_generator, run_scenarios_in_batches
+from app.notebook_tools.storage import store
 
 __all__ = [
     "classify_calibration",

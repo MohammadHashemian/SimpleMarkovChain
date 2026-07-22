@@ -4,8 +4,8 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-from analysis.psa.models import ParameterSet
-from domain.scenario import Scenario  # NOTE: NOT A GENERIC INTERFACE
+from app.analysis.psa.models import ParameterSet
+from app.domain.scenario import Scenario  # NOTE: NOT A GENERIC INTERFACE
 
 
 def plot_trajectories(

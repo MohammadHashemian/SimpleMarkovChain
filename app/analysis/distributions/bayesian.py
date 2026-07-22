@@ -4,8 +4,8 @@ import arviz as az
 import numpy as np
 import pymc as pm
 
-from analysis.distributions.base import ConvergenceDiagnostics
-from persistence.schemas.clinicals import StudyEstimate
+from app.analysis.distributions.base import ConvergenceDiagnostics
+from app.persistence.schemas.clinicals import StudyEstimate
 
 
 class Bayesian:

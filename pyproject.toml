@@ -72,7 +72,7 @@ ml = ["scikit-learn", "hmmlearn"]
 # Package discovery
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["engine*", "domain*", "analysis*", "persistence*", "utils*", "visualization*", "notebook_tools*"]
+include = ["engine*", "app*", "utils*"]
 
 # Pytest configuration
 [tool.pytest.ini_options]
@@ -103,16 +103,17 @@ ignore = ["N999"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"notebooks/*.py" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
-"notebooks/*.ipynb" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
-"notebooks/**/*.ipynb" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
+"app/notebooks/*.py" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
+"app/notebooks/*.ipynb" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
+"app/notebooks/**/*.ipynb" = ["E402", "E501", "F821", "F841", "E722", "N806", "N803", "W291", "W293"]
 "tests/*.py" = ["N803", "N806", "E501"]
-"notebook_tools/*.py" = ["E501", "F821"]
-"analysis/distributions.py" = ["N806", "F821"]
+"tests/**/*.py" = ["N803", "N806", "E501"]
+"app/notebook_tools/*.py" = ["E501", "F821"]
+"app/analysis/distributions.py" = ["N806", "F821"]
 "engine/transitions.py" = ["N806"]
 "engine/runners.py" = ["N803"]
 "utils/math.py" = ["N806"]
-"persistence/context.py" = ["E501"]
+"app/persistence/context.py" = ["E501"]
 
 # MyPy configuration
 [tool.mypy]

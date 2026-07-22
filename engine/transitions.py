@@ -310,7 +310,19 @@ class CTMCTransitionGenerator:
                 raise ValueError(f"Special transition for {state} must sum to 1.0")
 
     def _build_generator_matrix(self) -> np.ndarray:
-        """Build the infinitesimal generator matrix Q."""
+        """Build the infinitesimal generator matrix Q.
+
+        Math:
+            Q[i, j] = λ_{i→j}              (off-diagonal, hazard rates)
+            Q[i, i] = -sum_{j != i} Q[i,j] (diagonal, ensures row-sum = 0)
+
+        For special_transitions, the user gives probabilities p instead of
+        hazards. We convert via the equivalent-constant-hazard formula:
+            λ = -ln(1 - p) / Δt
+        which holds when the per-step transition is governed by a single
+        Poisson process with constant rate. For absorbing rows (p_ii = 1,
+        all other p = 0) the off-diagonals are all 0 and Q[i, i] = 0.
+        """
         n = len(self.states)
         Q = np.zeros((n, n), dtype=float)
 
@@ -325,16 +337,32 @@ class CTMCTransitionGenerator:
             i = self.state_index[state]
             Q[i, :] = 0.0  # Clear any previous hazards
 
+            # Determine if this is an absorbing row (p_ii = 1, all others 0).
+            # For an absorbing state, all off-diagonals must be 0 and Q[i,i] = 0.
+            self_prob = prob_row.get(state, 0.0)
+            is_absorbing = np.isclose(self_prob, 1.0, rtol=1e-12)
+
             for target, prob in prob_row.items():
                 j = self.state_index[target]
-                if i != j:
-                    # Convert probability to equivalent constant hazard
-                    Q[i, j] = -np.log(1.0 - prob) / self.delta_t
+                if i != j and prob > 0.0:
+                    # Convert probability to equivalent constant hazard.
+                    # Guard against numerical issues at p -> 1.
+                    one_minus_p = 1.0 - prob
+                    if one_minus_p > 1e-15:
+                        Q[i, j] = -np.log(one_minus_p) / self.delta_t
+                    else:
+                        Q[i, j] = 0.0
 
-        # Enforce CTMC property: rows sum to zero
+            # Enforce CTMC property: row sum = 0.
+            # For absorbing rows, off-diag is 0 so Q[i,i] stays 0 (correct).
+            # For non-absorbing rows, Q[i,i] = -sum(off-diag).
+            off_diag_sum = 0.0 if is_absorbing else np.sum(Q[i, :])
+            Q[i, i] = -off_diag_sum
+
+        # Enforce CTMC property for non-special rows
         for i in range(n):
             if self.states[i] in self.special_transitions:
-                continue  # Already handled
+                continue
             Q[i, i] = -np.sum(Q[i, :])
 
         return Q
@@ -530,4 +558,197 @@ class IndependentHazardTransitionGenerator:
         return (
             f"IndependentHazardTransitionGenerator("
             f"n_states={len(self.states)}, time_step={self.time_step})"
+        )
+
+
+class DTMCTransitionGenerator:
+    """Pure Discrete-Time Markov Chain (DTMC) transition matrix builder.
+
+    Core Philosophy:
+    ---------------
+    - All inputs are **direct transition probabilities** (no hazards, no rates).
+    - Each row of the output matrix is a probability distribution over target
+      states and must sum to 1.
+    - Absorbing states are first-class (rows where one entry is 1 and the rest
+      are 0).
+    - This is the simplest of the four generators and is appropriate when the
+      modeler already has per-step probabilities (e.g. from a published decision
+      model, calibration, or expert elicitation).
+
+    Math:
+    -----
+    Given a set of states S and a transition specification that fully describes
+    a row-stochastic matrix P where:
+
+        P[i, j] = Pr(X_{t+1} = s_j | X_t = s_i)
+        sum_j P[i, j] = 1  for all i
+
+    the generator simply validates and assembles this matrix. No exponentials,
+    no time-scale conversions, no proportional-allocation heuristics.
+
+    API is symmetric with :class:`CTMCTransitionGenerator` and
+    :class:`IndependentHazardTransitionGenerator`, but the values are
+    probabilities (0 <= p <= 1) instead of rates (λ >= 0).
+    """
+
+    def __init__(
+        self,
+        states: list[str],
+        transition_pairs: Mapping[tuple[str, str], float],
+        special_transitions: dict[str, dict[str, float]] | None = None,
+        time_step: Literal["weekly", "annual"] = "weekly",
+    ) -> None:
+        """
+        Initialize the DTMC Transition Generator.
+
+        Parameters
+        ----------
+        states : List[str]
+            Ordered list of states.
+        transition_pairs : Mapping[(from_state, to_state), probability]
+            Direct per-step transition probabilities. Each value must lie in
+            [0, 1]. For every state, the union of these entries plus any
+            self-loop probability must sum to 1.
+        special_transitions : Dict[str, Dict[str, float]], optional
+            Explicit full-row probability distributions for specific states
+            (e.g. absorbing states, custom sinks). When provided for a state,
+            these override the ``transition_pairs`` entries from that state.
+        time_step : {'weekly', 'annual'}, default='weekly'
+            Accepted for API symmetry with the other generators. **Has no
+            effect** on a DTMC matrix because no rate conversion is performed.
+        """
+        if not states:
+            raise ValueError("States list cannot be empty.")
+
+        self.states = [s.strip().upper() for s in states]
+        self.state_index = {state: i for i, state in enumerate(self.states)}
+        self.time_step = time_step
+
+        self.transition_pairs = {
+            (src.upper(), dst.upper()): float(p)
+            for (src, dst), p in transition_pairs.items()
+        }
+
+        self.special_transitions: dict[str, dict[str, float]] = {
+            state.upper(): {target.upper(): float(p) for target, p in row.items()}
+            for state, row in (special_transitions or {}).items()
+        }
+
+        self._validate()
+
+    def _validate(self) -> None:
+        """Input validation."""
+        for (src, dst), p in self.transition_pairs.items():
+            if src not in self.state_index or dst not in self.state_index:
+                raise ValueError(f"Invalid transition pair: {src} → {dst}")
+            if p < 0.0 or p > 1.0:
+                raise ValueError(
+                    f"Transition probability for {src} → {dst} must be in [0, 1] "
+                    f"(got {p})."
+                )
+
+        # Per-state row-sum check for non-special states. A state that has any
+        # outgoing transition_pairs entries must have those entries sum to 1.0
+        # (a complete distribution including any self-loop the user specifies).
+        for state in self.states:
+            if state in self.special_transitions:
+                continue
+            row_sum = sum(
+                p
+                for (src, _dst), p in self.transition_pairs.items()
+                if src == state
+            )
+            if row_sum == 0.0:
+                # No outgoing transitions specified: treat as absorbing (self-loop = 1).
+                # Allow only if the state has no entries at all.
+                has_any = any(src == state for (src, _dst) in self.transition_pairs)
+                if has_any:
+                    raise ValueError(
+                        f"Transitions from '{state}' sum to 0; probabilities "
+                        f"must be in [0, 1]."
+                    )
+                continue
+            if not np.isclose(row_sum, 1.0, rtol=1e-5):
+                raise ValueError(
+                    f"Transitions from '{state}' sum to {row_sum:.6f}, expected 1.0. "
+                    f"Make sure to include a self-loop (state -> state) for staying "
+                    f"in place."
+                )
+
+        for state, row in self.special_transitions.items():
+            if state not in self.state_index:
+                raise ValueError(f"Unknown state in special_transitions: {state}")
+            for target in row:
+                if target not in self.state_index:
+                    raise ValueError(
+                        f"Invalid target in special transition {state}: {target}"
+                    )
+            for target, p in row.items():
+                if p < 0.0 or p > 1.0:
+                    raise ValueError(
+                        f"Special transition probability for {state} → {target} "
+                        f"must be in [0, 1] (got {p})."
+                    )
+            if not np.isclose(sum(row.values()), 1.0, rtol=1e-5):
+                raise ValueError(
+                    f"Special transition for {state} must sum to 1.0 "
+                    f"(got {sum(row.values()):.6f})"
+                )
+
+    def build(self) -> list[list[float]]:
+        """Build the transition probability matrix.
+
+        Returns
+        -------
+        List[List[float]]
+            Row-stochastic transition matrix (rows sum to 1).
+        """
+        n = len(self.states)
+        P = np.zeros((n, n), dtype=np.float64)
+
+        # 1. Apply special transitions first (they override the regular map).
+        for state, row in self.special_transitions.items():
+            i = self.state_index[state]
+            for target, p in row.items():
+                j = self.state_index[target]
+                P[i, j] = p
+
+        # 2. Build rows for remaining states directly from transition_pairs.
+        for state in self.states:
+            i = self.state_index[state]
+
+            if state in self.special_transitions:
+                continue
+
+            row_total = 0.0
+            for (src, dst), p in self.transition_pairs.items():
+                if src != state:
+                    continue
+                j = self.state_index[dst]
+                P[i, j] = p
+                row_total += p
+
+            # Absorbing state: nothing was specified, default to self-loop = 1.
+            if row_total == 0.0:
+                P[i, i] = 1.0
+                continue
+
+            # Sanity check (defensive — _validate() should have caught this).
+            if not np.isclose(row_total, 1.0, rtol=1e-5):
+                raise ValueError(
+                    f"Transition probabilities from '{state}' sum to "
+                    f"{row_total:.6f}, expected 1.0. Make sure to include a "
+                    f"self-loop (state -> state) for staying in place."
+                )
+
+        return P.tolist()
+
+    def build_matrix(self) -> np.ndarray:
+        """Return as numpy array (recommended for simulation)."""
+        return np.array(self.build(), dtype=np.float64)
+
+    def __repr__(self) -> str:
+        return (
+            f"DTMCTransitionGenerator("
+            f"n_states={len(self.states)}, time_step='{self.time_step}')"
         )
