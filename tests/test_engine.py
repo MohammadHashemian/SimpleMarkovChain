@@ -257,6 +257,95 @@ def test_markov_chains_reproducible_with_seed(simple_chain):
     assert path1 == path2
 
 
+# ── Per-worker rng regression ────────────────────────────────────────
+#
+# Previously MarkovChains.walk drew transitions from the global
+# np.random state, so the per-worker ``rng`` that worker_function
+# passes via ``worker_kwargs['rng']`` was silently ignored. The
+# following tests pin the contract that the engine MUST use the
+# supplied Generator, never the global state.
+
+
+def _stochastic_chain():
+    """3-state chain with no absorbing state, so we exercise many draws."""
+    states = ["A", "B", "C"]
+    matrix = np.array(
+        [
+            [0.5, 0.3, 0.2],
+            [0.3, 0.5, 0.2],
+            [0.2, 0.3, 0.5],
+        ]
+    )
+    return Chain(name="main", states=states, matrix=matrix)
+
+
+def test_markov_chains_uses_worker_kwargs_rng_when_provided():
+    """Same per-worker rng seed → identical paths (the contract worker_function relies on)."""
+    chain = _stochastic_chain()
+    rng_a = np.random.default_rng(42)
+    rng_b = np.random.default_rng(42)
+    p1 = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": rng_a},
+    ).run()
+    p2 = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": rng_b},
+    ).run()
+    assert p1 == p2
+
+
+def test_markov_chains_different_worker_rng_seeds_give_different_paths():
+    chain = _stochastic_chain()
+    p42 = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": np.random.default_rng(42)},
+    ).run()
+    p7 = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": np.random.default_rng(7)},
+    ).run()
+    assert p42 != p7
+
+
+def test_markov_chains_does_not_use_global_np_random_state():
+    """Per-worker rng must override whatever the global state happens to be."""
+    chain = _stochastic_chain()
+    np.random.seed(123)  # dirty the global state
+    p_dirty = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": np.random.default_rng(42)},
+    ).run()
+    np.random.seed(999)  # dirty the global state differently
+    p_clean = MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=100,
+        transition_modifier=NoOpModifier(),
+        worker_kwargs={"rng": np.random.default_rng(42)},
+    ).run()
+    # The per-worker rng is the same in both runs, so the paths must match
+    # even though the global np.random state was changed between them.
+    assert p_dirty == p_clean
+
+
+def test_markov_chains_without_rng_isolated_from_global_state():
+    """Even when no rng is supplied, the walk must not consume the global state."""
+    chain = _stochastic_chain()
+    np.random.seed(0)
+    marker_before = np.random.get_state()[2]  # state position
+    MarkovChains(
+        chains=[chain], entrance="A", entrance_chain="main", steps=50,
+        transition_modifier=NoOpModifier(),
+    ).run()
+    marker_after = np.random.get_state()[2]
+    # Global state position should not have advanced.
+    assert marker_before == marker_after
+
+
 def test_markov_result_model():
     result = MarkovResult(
         initial_state="Healthy",

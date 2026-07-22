@@ -1,4 +1,4 @@
-from utils.decorators import deprecated, with_context
+from utils.decorators import deprecated, stable_hash, with_context
 from utils.logging import PrettyFormatter, setup_root_logger
 from utils.math import (
     build_zero_truncated_poisson_probs,
@@ -17,6 +17,7 @@ from utils.path_utils import get_project_root
 __all__ = [
     "deprecated",
     "with_context",
+    "stable_hash",
     "PrettyFormatter",
     "setup_root_logger",
     "to_weekly",

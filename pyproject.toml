@@ -79,9 +79,14 @@ include = ["engine*", "domain*", "analysis*", "persistence*", "utils*", "visuali
 log_cli = true
 log_cli_level = "INFO"
 pythonpath = ["."]
-log_cli_format = "%(filename)s:%(lineno)s:[%(levelname)s] %(message)s"
+log_cli_format = "%(filename)s:%(lineno)d:[%(levelname)s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = "tests"
+# The deprecated/ tree contains a stale, unmaintained test suite that
+# imports a long-removed ``model`` module. Exclude it from collection so
+# that ``pytest`` from the repo root (or any ``pytest <path>`` glob) does
+# not pick it up.
+norecursedirs = ["deprecated", ".git", ".venv", "build", "dist"]
 
 
 # Ruff configuration

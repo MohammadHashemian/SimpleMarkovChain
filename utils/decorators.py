@@ -1,4 +1,5 @@
 import warnings
+import zlib
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -18,6 +19,22 @@ def deprecated(reason: str):
         return wrapper
 
     return decorator
+
+
+def stable_hash(*parts: Any, modulus: int = 2**32) -> int:
+    """Stable cross-process hash suitable for seeding per-scenario RNGs.
+
+    Python's built-in ``hash()`` is randomized per process (PYTHONHASHSEED),
+    so deriving a per-scenario seed via ``hash((seed, scenario.name))``
+    produces a *different* value in every Python process — making the
+    pipeline not actually reproducible from the env seed alone.
+
+    This helper hashes the UTF-8 concatenation of ``parts`` with the
+    platform-independent CRC-32 (via zlib), so the result is identical
+    across runs, platforms, and Python versions.
+    """
+    buf = "|".join(str(p) for p in parts).encode("utf-8")
+    return zlib.crc32(buf) % modulus
 
 
 def with_context(**context_factories: Callable[[], Any]):

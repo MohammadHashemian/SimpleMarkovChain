@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/MohammadHashemian/SimpleMarkovChain/actions"><img src="https://github.com/MohammadHashemian/SimpleMarkovChain/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-202%20passed-brightgreen" alt="tests" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-214%20passed-brightgreen" alt="tests" /></a>
   <a href="#"><img src="https://img.shields.io/badge/coverage-54%25-yellow" alt="coverage" /></a>
   <a href="#"><img src="https://img.shields.io/badge/stability-stable-brightgreen" alt="stability" /></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.14-blue" alt="python" /></a>
@@ -33,7 +33,7 @@ The modeling logic is shipped as an importable Python package, while all analyse
 - **📊 Uncertainty quantification** — PSA (Monte Carlo), OWSA (tornado diagrams), CEAC, and EVPI.
 - **🔬 Bayesian foundation** — PyMC-driven posterior sampling and convergence diagnostics (R-hat, ESS, divergences).
 - **🧱 Typed IO boundary** — Pydantic schemas validate every external input before it touches the engine.
-- **🧪 202 passing tests** spanning the engine, domain, analysis, and persistence layers.
+- **🧪 214 passing tests** spanning the engine, domain, analysis, and persistence layers.
 
 ---
 
@@ -69,11 +69,14 @@ The modeling logic is shipped as an importable Python package, while all analyse
 |---|---|
 | `00_poisson_mass_functions.ipynb` | Poisson mass function validation for bleeding event distributions |
 | `01_preprocessing.ipynb` | Data preprocessing and parameter derivation |
+| `01b_mortality_iran.ipynb` | UN WPP 2024 mortality reconstruction for Iran, derivation of the `data/mortality_iran.json` table |
 | `02_meta_analysis.ipynb` | Bayesian meta-analysis of clinical inputs |
 | `03_psa_simulation.ipynb` | Probabilistic sensitivity analysis (10,000 iterations, vectorized batch engine) |
 | `04_owsa_simulation.ipynb` | One-way sensitivity analysis simulation |
 | `05_psa_analysis.ipynb` | PSA result analysis (CEAC, EVPI, scatter plots) |
 | `07_owsa_analysis.ipynb` | OWSA result analysis (tornado diagrams) |
+
+> **Reproducibility note.** Both PSA (`03`) and OWSA (`04`) notebooks derive per-scenario RNG seeds from the env seed in `data/simulation.json` using `utils.stable_hash` (a CRC-32–based, cross-process-stable hash). Do not use Python's built-in `hash()` for this — it is randomized per process by `PYTHONHASHSEED` and will silently break reproducibility.
 
 ---
 

@@ -48,7 +48,12 @@ class Bayesian:
         self._built = False
         self._sampled = False
 
-        self._rng = np.random.default_rng()
+        # Default random_seed used to seed both the local rng (consumed by
+        # ``sample`` / ``sample_study_level``) and the underlying MCMC sampler.
+        # This keeps the model deterministic from the moment of construction
+        # rather than only after ``fit()`` has been called.
+        self._default_seed: int = 42
+        self._rng = np.random.default_rng(self._default_seed)
 
         self._mcmc_config = {
             "draws": 2500,
@@ -56,7 +61,7 @@ class Bayesian:
             "chains": 4,
             "cores": 4,
             "target_accept": 0.95,
-            "random_seed": 42,
+            "random_seed": self._default_seed,
         }
 
     def configure_mcmc(self, **kwargs) -> None:

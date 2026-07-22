@@ -4,6 +4,7 @@ import pytest
 from notebook_tools.calibration import _safe_div, classify_calibration
 from notebook_tools.dataframe_builders import calculate_state_occupation
 from notebook_tools.scenario_helpers import pair_scenarios, parse_scenario
+from notebook_tools.smoke import main as smoke_main
 
 
 class TestCalculateStateOccupation:
@@ -123,3 +124,16 @@ class TestPairScenarios:
         ]
         pairs = pair_scenarios(scenarios)
         assert len(pairs) == 1
+
+
+class TestSeedSmokeScript:
+    """The ``notebook_tools.smoke`` script is the single-line guard that
+    CI runs after the test suite to confirm the project is still seeded
+    end-to-end. It must return 0 and report OK."""
+
+    def test_smoke_returns_zero_and_reports_ok(self, capsys):
+        rc = smoke_main()
+        out = capsys.readouterr().out
+        assert rc == 0, f"smoke_main() returned {rc}"
+        assert "OK" in out
+        assert "env seed" in out

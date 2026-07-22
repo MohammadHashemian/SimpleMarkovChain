@@ -31,3 +31,6 @@ jobs:
 
       - name: Test with pytest
         run: pytest tests/ -v --tb=short
+
+      - name: Seed reproducibility smoke test
+        run: python -m notebook_tools.smoke

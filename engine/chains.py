@@ -160,6 +160,28 @@ class MarkovChains:
             except Exception:
                 return {}
 
+    def _get_rng(self) -> np.random.Generator:
+        """Return a per-call numpy Generator.
+
+        Looks up ``worker_kwargs['rng']`` (the contract used by ``worker_function``
+        to pass a seeded ``np.random.default_rng`` per worker) and falls back to a
+        fresh local generator when none is provided. This guarantees that the
+        state transition draws are always driven by a Generator that the caller
+        can seed, never by the global ``np.random`` state.
+        """
+        kwargs = self.worker_kwargs
+        rng = None
+        if isinstance(kwargs, dict):
+            rng = kwargs.get("rng")
+        else:
+            for attr in ("rng", "_rng", "random_state"):
+                if hasattr(kwargs, attr):
+                    rng = getattr(kwargs, attr)
+                    break
+        if isinstance(rng, np.random.Generator):
+            return rng
+        return np.random.default_rng()
+
     def _compute_rewards(
         self, step: int, current_state: str, base_kwargs: dict[str, Any]
     ) -> None:
@@ -216,6 +238,14 @@ class MarkovChains:
         # -> dict conversion on every store/reward/condition/modifier call.
         base_kwargs = self._worker_kwargs_dict()
 
+        # Resolve a per-walk numpy Generator. The walk MUST draw transitions
+        # from this Generator, never from the global np.random state, so the
+        # simulator stays reproducible when a worker seeds its own rng via
+        # ``worker_kwargs['rng']``. If no rng was supplied, fall back to a
+        # fresh local generator (still isolated from the global state).
+        rng = self._get_rng()
+        _rng_choice = rng.choice
+
         # Bind hot attributes to locals for faster attribute access in the loop.
         absorbing_mask = self._absorbing_mask
         _chains_map = self._chains_map
@@ -271,7 +301,9 @@ class MarkovChains:
             # Transition with modifier (skipped entirely for NoOpModifier)
             if _is_noop_modifier:
                 base_probs = transitions[current_state_idx]
-                current_state_idx = np.random.choice(len(states), p=base_probs)
+                current_state_idx = int(
+                    _rng_choice(len(states), p=base_probs)
+                )
             else:
                 base_probs = transitions[current_state_idx]
                 adjusted_probs = self.transition_modifier.adjust_transition(
@@ -282,7 +314,9 @@ class MarkovChains:
                     states=states,
                     **base_kwargs,
                 )
-                current_state_idx = np.random.choice(len(states), p=adjusted_probs)
+                current_state_idx = int(
+                    _rng_choice(len(states), p=adjusted_probs)
+                )
 
         self.current_state_idx = current_state_idx
 

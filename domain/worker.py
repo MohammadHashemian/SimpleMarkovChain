@@ -119,7 +119,11 @@ def _init_worker(inputs: ModelInput, context: ModelContext):
             if inp.benefits_discount_rate
             else 0
         ),
-        "baseline_age_weeks": inp.baseline_age * 52,
+        # Coerce to int so the scalar ``weight`` reward (which calls
+        # ``cal_body_weight``) is not poisoned by the float annotation on
+        # ``ModelInput.baseline_age``. The vectorized path explicitly casts
+        # to int as well, so both paths agree.
+        "baseline_age_weeks": int(inp.baseline_age * 52),
         # flatten deep structures
         "utilities": utils,
         "threshold_mild": ctx.clinical.clinical_scoring.pettersson_score.thresholds.mild,
