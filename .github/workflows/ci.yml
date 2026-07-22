@@ -33,4 +33,4 @@ jobs:
         run: pytest tests/ -v --tb=short
 
       - name: Seed reproducibility smoke test
-        run: python -m app.notebook_tools.smoke
+        run: python -m app.notebook.smoke

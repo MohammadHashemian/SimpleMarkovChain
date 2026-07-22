@@ -6,7 +6,7 @@ from engine.chains import (
     Chain,
     MarkovChains,
 )
-from engine.interfaces import NoOpModifier
+from engine.modifier import NoOpModifier
 from engine.results import MarkovResult
 from engine.transitions import HybridTransitionGenerator
 

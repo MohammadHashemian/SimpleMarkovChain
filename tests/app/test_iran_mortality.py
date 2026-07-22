@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from app.notebook_tools.iran_mortality import (
+from app.notebook.iran_mortality import (
     POLAND_AGE_BUCKETS,
     WPP_AGE_START_TO_POLAND,
     WPP_OPEN_AGE_STARTS,

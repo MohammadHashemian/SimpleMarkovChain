@@ -1,5 +1,5 @@
 from engine.chains import Chain, MarkovChains, MarkovModel
-from engine.interfaces import NoOpModifier, TransitionModifier
+from engine.modifier import NoOpModifier, TransitionModifier
 from engine.results import MarkovResult
 from engine.runners import Runner, ScenarioRunner, SimulationResult
 from engine.transitions import (

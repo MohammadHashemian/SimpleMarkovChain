@@ -52,7 +52,7 @@ The repository is organised into **two top-level packages** plus shared infrastr
 | ↳ scalar runtime | `engine/chains.py` | `MarkovChains` + `Chain` — per-iteration DTMC runtime |
 | ↳ vectorized runtime | `engine/vectorized.py` | `BatchMarkovChain` — n_iters in lockstep, single numpy sweep per step |
 | ↳ transition generators | `engine/transitions.py` | DTMC / Hybrid / CTMC / Independent-hazard generators |
-| ↳ interfaces | `engine/interfaces.py` | `TransitionModifier` protocol + `NoOpModifier` |
+| ↳ modifier | `engine/modifier.py` | `TransitionModifier` protocol + `NoOpModifier` |
 | ↳ runners | `engine/runners.py` | `Runner`, `ScenarioRunner` — process pools, chunked IPC, batch dispatch |
 | ↳ result type | `engine/results.py` | `MarkovResult` — generic, frozen Pydantic output |
 | **🦠 App (Use case / Example)** | `app/` | **Hemophilia cost-effectiveness study.** Everything hemophilia-specific. |
@@ -61,7 +61,7 @@ The repository is organised into **two top-level packages** plus shared infrastr
 | ↳ analysis | `app/analysis/` | PSA distributions, parameter sampling/resolution, Monte Carlo drivers |
 | ↳ persistence | `app/persistence/` | Typed JSON loaders, Pydantic schemas, `ModelContext` aggregator |
 | ↳ visualization | `app/visualization/` | Plotting functions and result visualisation utilities |
-| ↳ notebook tools | `app/notebook_tools/` | Helpers shared across notebooks (incl. `run_scenarios_in_batches`, `smoke`) |
+| ↳ notebook | `app/notebook/` | Helpers shared across notebooks (incl. `run_scenarios_in_batches`, `smoke`) |
 | ↳ notebooks | `app/notebooks/` | Analysis notebooks (see [📓 Notebooks](#-notebooks)) |
 | ↳ data | `app/data/` | Clinical parameters, costs, utilities, mortality tables, simulation config |
 | ↳ outputs | `app/outputs/` | Generated figures, logs, and simulation results (gitignored) |
@@ -216,7 +216,7 @@ The codebase ships with **two execution paths** for the Markov simulation:
 | **Scalar** | `engine/chains.py` — `MarkovChains` | Small-scale runs, custom reward logic, debugging | One Python iteration per (iter, step); full reward-fn flexibility |
 | **Vectorized** | `engine/vectorized.py` — `BatchMarkovChain` | PSA, OWSA, any batch of homogeneous simulations | Stacks `n_iters` per-iter state into `(n_iters, n_states)` arrays; one numpy op per step across all iters |
 
-Both paths share the **same domain semantics** — the vectorized reward functions in `app/domain/rewards/hemophilia_vectorized.py` mirror the scalar ones in `app/domain/rewards/hemophilia.py` bit-for-bit (within sampling noise), so results are statistically equivalent.
+Both paths share the **same domain semantics** — the vectorized reward functions in `app/domain/rewards/vectorized.py` mirror the scalar ones in `app/domain/rewards/scalar.py` bit-for-bit (within sampling noise), so results are statistically equivalent.
 
 ### Measured speedup
 
@@ -240,7 +240,7 @@ from app.domain.scenario import ScenarioBundle
 from app.domain.inputs import ModelInput
 from app.domain.worker import worker_function, worker_function_batch
 from app.persistence.context import ModelContext
-from app.notebook_tools.scenario_runner import run_scenarios_in_batches
+from app.notebook.scenario_runner import run_scenarios_in_batches
 
 run_scenarios_in_batches(
     bundles=bundles,
@@ -282,7 +282,7 @@ def fn(step: int,
        rng: np.random.Generator) -> np.ndarray:  # returns (n_iters,) array
 ```
 
-To add a new vectorized reward, write a function with this signature and pass it via the `store_funcs` / `reward_funcs` dict to `walk_batch` (or extend the `VECTORIZED_STORE_FUNCS` / `VECTORIZED_REWARD_FUNCS` registries in `app/domain/rewards/hemophilia_vectorized.py`).
+To add a new vectorized reward, write a function with this signature and pass it via the `store_funcs` / `reward_funcs` dict to `walk_batch` (or extend the `VECTORIZED_STORE_FUNCS` / `VECTORIZED_REWARD_FUNCS` registries in `app/domain/rewards/vectorized.py`).
 
 ### Progress callback for custom runners
 
@@ -359,7 +359,7 @@ app/notebooks/ <── ModelOutput <── worker_function(_batch) <── Param
                                   app/visualization/ (plots and figures)
 ```
 
-`app.notebook_tools.scenario_runner.run_scenarios_in_batches` dispatches each scenario to one of two execution paths:
+`app.notebook.scenario_runner.run_scenarios_in_batches` dispatches each scenario to one of two execution paths:
 
 - **`engine="multiprocessing"` / `engine="pathos"`** — **scalar path.** Each `ModelInput` is shipped to a worker process and run through `engine.MarkovChains.walk` + `app.domain.worker.worker_function`. Best when reward logic is custom or non-vectorizable.
 - **`engine="batch"`** — **vectorized path.** The full input list for a scenario is processed in one call to `app.domain.worker.worker_function_batch`, which stacks the per-iter state into `(n_iters, n_states)` arrays and walks all iters in lockstep. ~13–17× faster for the standard hemophilia workload — see [⚡ Performance](#-performance).

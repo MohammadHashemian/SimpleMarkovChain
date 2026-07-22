@@ -873,7 +873,7 @@ class TestDomainTransitionMatrixBuilder:
         """
         from app.domain.enums import HealthStates
         from app.domain.inputs import ModelInput
-        from app.domain.transitions import build_transition_matrix
+        from app.domain.transition_builder import build_transition_matrix
         from app.persistence.context import ModelContext
 
         # Just load the context to ensure data files are reachable.

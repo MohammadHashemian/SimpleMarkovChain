@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from engine.interfaces import TransitionModifier
+from engine.modifier import TransitionModifier
 
 
 class HemophiliaMortalityModifier(TransitionModifier):

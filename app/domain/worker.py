@@ -6,21 +6,21 @@ import numpy as np
 from app.domain.enums import Regime
 from app.domain.inputs import ModelInput
 
-# from app.visualization.visualization import visualize_matrix
-from app.domain.rewards.hemophilia import (
+# from app.visualization.matrices import visualize_matrix
+from app.domain.rewards.scalar import (
     consumption,
     event_count,
     make_pettersson_score,
     utility,
     weight,
 )
-from app.domain.rewards.hemophilia_vectorized import (
+from app.domain.rewards.vectorized import (
     VECTORIZED_REWARD_FUNCS,
     VECTORIZED_STORE_FUNCS,
     register_state_index,
 )
 from app.domain.scenario import Scenario
-from app.domain.transitions import AgeBasedMortalityModifier, build_transition_matrix
+from app.domain.transition_builder import AgeBasedMortalityModifier, build_transition_matrix
 from app.persistence.context import ModelContext
 from app.persistence.schemas.utilities import StateUtilities
 from engine.chains import Chain, MarkovChains

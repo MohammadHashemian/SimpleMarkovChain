@@ -1,11 +1,11 @@
-from app.domain.rewards.hemophilia import (
+from app.domain.rewards.pettersson import pettersson_to_severity
+from app.domain.rewards.scalar import (
     consumption,
     event_count,
     make_pettersson_score,
     utility,
     weight,
 )
-from app.domain.rewards.pettersson import pettersson_to_severity
 
 __all__ = [
     "event_count",

@@ -9,7 +9,7 @@ from typing import (
 
 import numpy as np
 
-from engine.interfaces import NoOpModifier, TransitionModifier
+from engine.modifier import NoOpModifier, TransitionModifier
 
 _NOOP_MODIFIER = NoOpModifier()
 

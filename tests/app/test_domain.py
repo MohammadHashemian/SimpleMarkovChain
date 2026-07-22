@@ -3,16 +3,16 @@ import pytest
 
 from app.domain.enums import ArthropathySeverity, HealthStates, Regime
 from app.domain.modifiers import HemophiliaMortalityModifier
-from app.domain.rewards.hemophilia import (
+from app.domain.rewards.pettersson import pettersson_to_severity
+from app.domain.rewards.scalar import (
     consumption,
     event_count,
     make_pettersson_score,
     utility,
     weight,
 )
-from app.domain.rewards.pettersson import pettersson_to_severity
 from app.domain.scenario import Scenario, ScenarioBundle
-from engine.interfaces import NoOpModifier
+from engine.modifier import NoOpModifier
 
 
 class TestEnums:

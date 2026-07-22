@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from app.notebook_tools.calibration import _safe_div, classify_calibration
-from app.notebook_tools.dataframe_builders import calculate_state_occupation
-from app.notebook_tools.scenario_helpers import pair_scenarios, parse_scenario
-from app.notebook_tools.smoke import main as smoke_main
+from app.notebook.calibration import _safe_div, classify_calibration
+from app.notebook.dataframe_builders import calculate_state_occupation
+from app.notebook.scenario_helpers import pair_scenarios, parse_scenario
+from app.notebook.smoke import main as smoke_main
 
 
 class TestCalculateStateOccupation:

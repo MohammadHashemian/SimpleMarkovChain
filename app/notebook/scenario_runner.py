@@ -10,8 +10,8 @@ import pandas as pd
 
 from app.domain.inputs import ModelInput
 from app.domain.scenario import ScenarioBundle
-from app.notebook_tools.dataframe_builders import build_df
-from app.notebook_tools.scenario_helpers import pair_scenarios
+from app.notebook.dataframe_builders import build_df
+from app.notebook.scenario_helpers import pair_scenarios
 from app.persistence.context import ModelContext
 from engine.chains import Chain
 from engine.runners import ScenarioRunner, SimulationResult

@@ -4,7 +4,7 @@ import numpy as np
 
 from app.domain.inputs import ModelInput
 from app.persistence.schemas.mortality import MortalityFile
-from engine.interfaces import TransitionModifier
+from engine.modifier import TransitionModifier
 from engine.transitions import HybridTransitionGenerator
 from utils.logging import setup_root_logger
 from utils.math import prob_at_least_one, to_weekly

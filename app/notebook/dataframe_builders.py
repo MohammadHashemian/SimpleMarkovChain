@@ -7,7 +7,7 @@ import pandas as pd
 from app.domain.enums import HealthStates
 from app.domain.inputs import ModelInput
 from app.domain.worker import ModelOutput
-from app.notebook_tools.scenario_helpers import parse_scenario
+from app.notebook.scenario_helpers import parse_scenario
 from app.persistence.context import ModelContext
 from engine.runners import SimulationResult
 from utils.logging import setup_root_logger
